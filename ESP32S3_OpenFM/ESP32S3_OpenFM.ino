@@ -1,34 +1,116 @@
-/*
-  OPENFM HLS - SAMODZIELNY ODTWARZACZ TESTOWY
-  ESP32-S3 N16R8 / ILI9488 IPS 480x320 / pilot NEC GPIO15 / PCM5102A
-  Zamiast problematycznego HLSStream.h: wlasny odczyt MASTER/MEDIA/TS
-  AAC-MPEG-TS -> MTSDecoder + AACDecoderHelix -> I2S0
-  200 nazw stacji z GETRADIO; ID OFM z HTTPS redirect (z wyjatkiem 2 zapisanych).
+/*=============================================================================
+  PROJEKT : OPENFM HLS INTERNET RADIO - ESP32-S3
+  PLIK    : ESP32S3_OpenFM.ino
+  ROLA    : Glowny szkic Arduino - inicjalizacja, sterowanie, pilot i ekran TFT
 
-  UWAGA: testowa weryfikacja HTTPS jest wylaczona (setInsecure).
-  115200 baud, w terminalu komendy: g 1..200 | o OFM10 | s | r | + | - | m | h
-*/
+  OPIS PROJEKTU
+  -----------------------------------------------------------------------------
+  Odtwarzacz radia internetowego OpenFM dla modulu ESP32-S3 N16R8. Szkic
+  odpowiada za uruchomienie urzadzenia, konfiguracje Wi-Fi, odbior pilota NEC,
+  obsluge polecen z portu szeregowego oraz prezentacje informacji na ekranie
+  ILI9488 480x320. Wlasciwy silnik pobierania HLS, dekodowanie AAC i wyjscie
+  I2S znajduja sie w osobnym module OpenFmPlayer. Metadane utworow ID3v2
+  analizuje OpenFmMetadata, a nazwy i identyfikatory kanalow udostepnia
+  OpenFmCatalog.
+
+  TOR AUDIO (modul OpenFmPlayer, nie ten plik)
+  -----------------------------------------------------------------------------
+  OpenFM API / token -> playlista HLS MASTER -> MEDIA -> segmenty MPEG-TS
+  -> MTSDecoder + AACDecoderHelix -> VolumeStream -> I2S -> PCM5102A.
+  Czestotliwosc probkowania jest rozpoznawana na podstawie danych dekodera AAC;
+  konfiguracja I2S powinna odpowiadac rzeczywistemu sample rate dekodera.
+
+  SPRZET I POLACZENIA
+  -----------------------------------------------------------------------------
+  Modul       : ESP32-S3 N16R8 (16 MB Flash, 8 MB PSRAM - zgodnie z konfiguracja)
+  Wyswietlacz : ILI9488 IPS, 480 x 320, magistrala SPI / format RGB666 na TFT
+  Pilot       : odbiornik IR NEC, GPIO15 (dekodowanie programowe przez przerwanie)
+  DAC         : PCM5102A, wyjscie I2S (piny BCLK/LRCK/DATA konfigurowane w OpenFmPlayer)
+  SPI TFT     : SCK=GPIO11, MOSI=GPIO12, MISO=GPIO13, CS=GPIO5, DC=GPIO4
+  Zegar       : DS_DIGII35pt7b - niestandardowa czcionka dostarczona osobno
+
+  SRODOWISKO I BIBLIOTEKI
+  -----------------------------------------------------------------------------
+  Platforma   : Arduino IDE + pakiet plytek ESP32 firmy Espressif
+  ESP32 core  : 3.3.12 (wersja widoczna w przekazanym logu kompilacji)
+  Arduino IDE : numer wersji nie jest zapisany w szkicu - uzupelnic wg instalacji
+  WiFiManager : biblioteka WiFiManager (wersja nieustalona na podstawie zalaczonych plikow)
+  Adafruit GFX: biblioteka Adafruit GFX Library (wersja nieustalona)
+  SPI         : biblioteka SPI dolaczana z pakietem ESP32 Arduino core
+  Font        : DS_DIGII35pt7b.h - plik projektu, nie standardowa czcionka GFX
+  Moduly      : OpenFmPlayer, OpenFmResolver, OpenFmMetadata, OpenFmCatalog
+  AudioTools / CodecHelix / CodecMTS sa wykorzystywane w OpenFmPlayer.cpp.
+  Ich dokladnych wersji nie da sie ustalic z samego pliku INO. Przed publikacja
+  nalezy wpisac numery wersji z Arduino IDE -> Library Manager / plikow biblioteki.
+
+  PAMIEC I WYDAJNOSC
+  -----------------------------------------------------------------------------
+  GFXcanvas16 przechowuje obraz w formacie RGB565 (16 bit/piksel). Dla 480x320
+  bufor wymaga ok. 307 200 bajtow. Wysylanie fragmentow ekranu ogranicza czas
+  zajecia SPI i pozwala petli glownej szybko obslugiwac pilot oraz Serial.
+  Wysylanie do ILI9488 odbywa sie z zegarem SPI 40 MHz.
+
+  OBSLUGA UZYTKOWNIKA
+  -----------------------------------------------------------------------------
+  Port szeregowy : 115200 bit/s
+  Komendy        : g 1..200, o OFM10, n, p, s, r, +, -, m, h
+  Test ekranu    : meta wykonawca|tytul (dane reczne, tylko do testu)
+  Pilot NEC      : strzalki - zmiana stacji, VOL+/VOL-, STOP, OK, MUTE
+
+  BEZPIECZENSTWO I OGRANICZENIA
+  -----------------------------------------------------------------------------
+  W modulach sieciowych wystepuje WiFiClientSecure::setInsecure(). Oznacza to,
+  ze certyfikat TLS serwera nie jest weryfikowany. To ustawienie ulatwia testy,
+  ale nie jest zalecane w urzadzeniu produkcyjnym. Tokenow HLS nie nalezy
+  wypisywac do logow ani umieszczac na stale w kodzie lub repozytorium.
+
+  WAZNE
+  -----------------------------------------------------------------------------
+  Ten plik jest glownym szkicem i korzysta z pozostalych plikow projektu. Nie
+  jest samodzielny: do kompilacji musza byc obecne odpowiednie pliki .h/.cpp,
+  w tym OpenFmPlayer, OpenFmResolver, OpenFmMetadata i OpenFmCatalog oraz font.
+
+  Wersja dokumentacji: 1.0
+  Data opracowania     : 2026-11-08
+=============================================================================*/
+// Podstawowe API Arduino: GPIO, czas, Serial, typy i funkcje pomocnicze.
 #include <Arduino.h>
+// Sterownik Wi-Fi ESP32; wymagany do polaczenia z siecia lokalna.
 #include <WiFi.h>
+// Portal konfiguracyjny Wi-Fi - zapis i ponowne wykorzystanie danych sieci.
 #include <WiFiManager.h>
+// Sprzetowa magistrala SPI uzywana do komunikacji z kontrolerem ILI9488.
 #include <SPI.h>
+// Biblioteka grafiki: GFXcanvas16, tekst, linie i prostokaty.
 #include <Adafruit_GFX.h>
-#include <DS_DIGII35pt7b.h>     // Oryginalna cyfrowa czcionka zegara z projektu użytkownika
+// Wlasna czcionka cyfrowa zegara - musi byc dostepna jako osobny plik naglowkowy.
+#include <DS_DIGII35pt7b.h>
+// Funkcje systemowe ESP-IDF, m.in. identyfikacja przyczyny resetu.
 #include <esp_system.h>
+// Interfejs silnika HLS/AAC/I2S - implementacja znajduje sie w OpenFmPlayer.cpp.
 #include "OpenFmPlayer.h"
+// Interfejs parsera ID3v2 wydzielajacego wykonawce i tytul z MPEG-TS.
 #include "OpenFmMetadata.h"
+// Interfejs katalogu nazw stacji, slugow i identyfikatorow OFM.
 #include "OpenFmCatalog.h"
 
-// Te same piny TFT i pilota co w Twoim glownym projekcie.
-static constexpr int PIN_TFT_CS=5, PIN_TFT_DC=4;
-static constexpr int PIN_TFT_SCK=11, PIN_TFT_MISO=13, PIN_TFT_MOSI=12;
-static constexpr int PIN_IR=15;
-static constexpr uint16_t WIDTH=480, HEIGHT=320;
-SPIClass spi(HSPI);
-GFXcanvas16 canvas(WIDTH,HEIGHT);
+// ---------------------------------------------------------------------------
+// KONFIGURACJA SPRZETOWA - piny zgodne z bazowym projektem radia.
+// Zmiana polaczen wymaga aktualizacji ponizszych stalych oraz konfiguracji I2S
+// w OpenFmPlayer.cpp. Nie zmieniac pinow bez sprawdzenia polaczen plytki.
+// ---------------------------------------------------------------------------
+static constexpr int PIN_TFT_CS=5, PIN_TFT_DC=4;             // CS i D/C wyswietlacza.
+static constexpr int PIN_TFT_SCK=11, PIN_TFT_MISO=13, PIN_TFT_MOSI=12; // Linie SPI TFT.
+static constexpr int PIN_IR=15;                              // Wyjscie odbiornika podczerwieni.
+static constexpr uint16_t WIDTH=480, HEIGHT=320;            // Rozdzielczosc panelu ILI9488.
+SPIClass spi(HSPI);                                       // Osobny obiekt magistrali SPI ESP32.
+GFXcanvas16 canvas(WIDTH,HEIGHT);                         // Bufor obrazu RGB565 w pamieci RAM/PSRAM.
 
+// Wysyla pojedynczy bajt polecenia kontrolera ILI9488 (D/C=LOW).
 static void cmd(uint8_t c) {digitalWrite(PIN_TFT_DC,LOW);digitalWrite(PIN_TFT_CS,LOW);spi.transfer(c);digitalWrite(PIN_TFT_CS,HIGH);}
+// Wysyla pojedynczy bajt parametru polecenia ILI9488 (D/C=HIGH).
 static void dataByte(uint8_t d) {digitalWrite(PIN_TFT_DC,HIGH);digitalWrite(PIN_TFT_CS,LOW);spi.transfer(d);digitalWrite(PIN_TFT_CS,HIGH);}
+// Ustawia prostokat pamieci GRAM kontrolera: kolumny, wiersze i start zapisu RAM.
 static void window(uint16_t x0,uint16_t y0,uint16_t x1,uint16_t y1) {
   cmd(0x2a); digitalWrite(PIN_TFT_DC,HIGH);digitalWrite(PIN_TFT_CS,LOW);
   spi.transfer(x0>>8);spi.transfer(x0);spi.transfer(x1>>8);spi.transfer(x1);digitalWrite(PIN_TFT_CS,HIGH);
@@ -36,6 +118,8 @@ static void window(uint16_t x0,uint16_t y0,uint16_t x1,uint16_t y1) {
   spi.transfer(y0>>8);spi.transfer(y0);spi.transfer(y1>>8);spi.transfer(y1);digitalWrite(PIN_TFT_CS,HIGH);
   cmd(0x2c);
 }
+// Inicjalizacja GPIO, SPI 40 MHz i rejestrow kontrolera ILI9488.
+// Sekwencja wartosci rejestrow jest dopasowana do konkretnego modulu IPS.
 static void tftBegin(){
   pinMode(PIN_TFT_CS,OUTPUT);pinMode(PIN_TFT_DC,OUTPUT);
   digitalWrite(PIN_TFT_CS,HIGH);
@@ -59,6 +143,9 @@ static void tftBegin(){
   cmd(0x11);delay(120);cmd(0x13);cmd(0x29);delay(100);
   if(!canvas.getBuffer()) Serial.println("[TFT] Uwaga: brak RAM canvas");
 }
+// Pelne odswiezenie ekranu z bufora canvas. Uzywane glownie przy starcie.
+// GFX przechowuje RGB565, a ILI9488 jest tutaj konfigurowany na 18-bit RGB666,
+// dlatego kazdy piksel jest rozbijany na trzy bajty przed wyslaniem po SPI.
 static void drawTft(){
   if(!canvas.getBuffer())return;
   window(0,0,WIDTH-1,HEIGHT-1);
@@ -80,6 +167,8 @@ static void drawTft(){
 // CALY canvas jest nadal w PSRAM, lecz zamiast 460 KB wysylamy zwykle kilka KB.
 // Ten sposob znacznie skraca czas blokowania glownej petli i obslugi pilota.
 // ---------------------------------------------------------------------------
+// Odswieza tylko wskazany fragment canvasu. Wspolrzedne sa przycinane do
+// granic ekranu, aby nie wyslac danych poza obszar 480x320.
 static void pushCanvasRegion(int x,int y,int w,int h) {
   if(!canvas.getBuffer())return;
   x=constrain(x,0,(int)WIDTH-1); y=constrain(y,0,(int)HEIGHT-1);
@@ -101,13 +190,19 @@ static void pushCanvasRegion(int x,int y,int w,int h) {
   digitalWrite(PIN_TFT_CS,HIGH);
 }
 
-// Pilot NEC, bez dodatkowej biblioteki: pomiar mark/space na przerwaniu GPIO15.
-static volatile uint32_t rawBits=0;
-static volatile uint8_t bitIndex=0;
+// ---------------------------------------------------------------------------
+// ODBIOR PILOTA NEC - dekodowanie czasow impulsow bez dodatkowej biblioteki.
+// Przerwanie jedynie sklada 32-bitowa ramke; interpretacja przycisku odbywa sie
+// pozniej w handleRemote(), juz poza ISR.
+// ---------------------------------------------------------------------------
+static volatile uint32_t rawBits=0;             // Skladana 32-bitowa ramka NEC (LSB first).
+static volatile uint8_t bitIndex=0;             // Numer kolejnego bitu ramki NEC: 0..31.
 static volatile uint8_t irState=0; // 0=start, 1=lead space, 2=data
-static volatile uint32_t lastTransition=0;
-static volatile uint32_t pendingIr=0;
-static volatile bool irReady=false;
+static volatile uint32_t lastTransition=0;      // Znacznik czasu ostatniego zbocza IR w mikrosekundach.
+static volatile uint32_t pendingIr=0;           // Ostatnia kompletna ramka przekazana do loop().
+static volatile bool irReady=false;             // Flaga synchronizujaca ISR z petla glowna.
+// ISR: rejestruje czas pomiedzy zboczami sygnalu IR i buduje kod NEC.
+// IRAM_ATTR umieszcza funkcje w pamieci dostepnej podczas obslugi przerwan.
 static void IRAM_ATTR irChange(){
   uint32_t now=micros(),dt=now-lastTransition;lastTransition=now;
   bool level=digitalRead(PIN_IR);
@@ -124,33 +219,43 @@ static void IRAM_ATTR irChange(){
   }
 }
 
-// 200 pozycji z rzeczywistymi nazwami i slugami GETRADIO.
-// ID nie jest rowne numerowi pozycji. Nieznane ID sa ustalane poprzez HTTPS
-// z Location przekierowania; nie zgadujemy OFM1...OFM200.
+// ---------------------------------------------------------------------------
+// KATALOG STACJI I STAN APLIKACJI
+// ---------------------------------------------------------------------------
+// Numer pozycji (1..200) jest indeksem katalogu, a nie numerem OFM.
+// To OpenFmCatalog decyduje, czy ID jest juz znane, czy wymaga rozwiazania.
+// W wariancie katalogu statycznego znaneId() zwraca ID lokalnie bez HTTP.
+// ---------------------------------------------------------------------------
+// 200 pozycji z nazwami i slugami katalogu.
+// ID nie jest rowne numerowi pozycji. OpenFmCatalog udostepnia identyfikatory
+// potwierdzone w katalogu; brakujace pozycje nie moga byc uzupelniane zgadywaniem.
 static constexpr int COUNT=200;
+// Zwraca znany identyfikator OFM dla pozycji; nie uruchamia odtwarzania.
 static String channelIdForSlot(int slot) {return OpenFmCatalog::knownId(slot);}
 
-static String currentArtist;
-static String currentTitle;
-static uint32_t shownMetadataVersion=0; // tylko zmiany ramek ID3 odswiezaja panel
+static String currentArtist;                         // Ostatni wykonawca odczytany z ID3v2.
+static String currentTitle;                          // Ostatni tytul odczytany z ID3v2.
+static uint32_t shownMetadataVersion=0;         // Ostatnia wersja ID3 juz pokazana na ekranie.
 
-static int station=0,volume=14;
-static bool pendingPlay=false;
-static bool pendingStop=false; // sygnalizujemy STOP tylko przy pierwszej zmianie
-static bool muted=false;
-static String ownId;
+static int station=0,volume=14;                      // Biezacy indeks katalogu (od 0) i glosnosc 0..21.
+static bool pendingPlay=false;                      // Odtwarzanie nowej stacji czeka na zakonczenie STOP.
+static bool pendingStop=false;                      // Czy wyslano juz zadanie zatrzymania starej sesji. // sygnalizujemy STOP tylko przy pierwszej zmianie
+static bool muted=false;                             // MUTE zachowuje poprzednia wartosc volume.
+static String ownId;                                // Reczny identyfikator OFM z komendy Serial.
 static String lastCommand;
-static String serialLine;
-static uint32_t lastInfoDraw=0,lastClockPoll=0,lastStopReport=0,lastIr=0;
-static uint32_t switchRequestedAt=0;
-static bool screenDirty=true;              // Wymuszenie przebudowania tekstów po zmianie kanału/komendy.
-static bool clockDrawn=false;               // Po starcie zawsze rysujemy zegar.
+static String serialLine;                            // Bufor pojedynczej komendy z monitora portu szeregowego.
+static uint32_t lastInfoDraw=0,lastClockPoll=0,lastStopReport=0,lastIr=0; // Znaczniki czasu z millis().
+static uint32_t switchRequestedAt=0;             // Czas rozpoczecia zmiany stacji - diagnostyka oczekiwania na STOP.
+static bool screenDirty=true;                       // Flaga: wymus ponowne narysowanie panelu tekstowego.              // Wymuszenie przebudowania tekstów po zmianie kanału/komendy.
+static bool clockDrawn=false;                       // Informuje, czy zegar zostal juz narysowany po starcie.               // Po starcie zawsze rysujemy zegar.
 static String lastClockText;                // Porównujemy HH:MM:SS, nie liczbę milisekund.
 static String lastHeadlineSignature;         // Zmiana nazwy/statusu uruchamia tylko górny obszar.
 static String lastAudioSignature;            // Parametry odświeżamy wyłącznie po zmianie danych.
 
 // Zamknij stary strumien asynchronicznie; nowy uruchamia sie dopiero po busy()==false.
 // Nie blokujemy odczytu przyciskow, gdy HTTPS pobiera jeszcze segment.
+// Zleca zmiane stacji bez blokowania petli glownej. Najpierw zatrzymuje
+// aktualny strumien; nowy kanal wystartuje dopiero po OpenFmPlayer::busy()==false.
 static void requestSwitch(){
   pendingPlay=true;
   screenDirty=true;                      // Nowa stacja musi pojawić się od razu na TFT.
@@ -165,6 +270,8 @@ static void requestSwitch(){
     pendingStop=false;
   }
 }
+// Wybiera pozycje katalogu z zawijaniem: po 200 wraca do 1, przed 1 do 200.
+// Czysci metadane poprzedniego utworu i zleca przelaczenie odtwarzacza.
 static void selectStation(int idx){
   station=(idx+COUNT)%COUNT;
   ownId="";
@@ -173,6 +280,8 @@ static void selectStation(int idx){
                 OpenFmCatalog::entry(station).name,channelIdForSlot(station).c_str());
   requestSwitch();
 }
+// Umozliwia uruchomienie dowolnego kanalu OFM wpisanego recznie w Serial.
+// Akceptuje zapis OFM10 oraz skrocony zapis 10.
 static void customStation(String id){
   id.trim();id.toUpperCase();if(!id.startsWith("OFM"))id="OFM"+id;
   if(id.length()<4)return;
@@ -181,6 +290,8 @@ static void customStation(String id){
   Serial.println("[STACJA] Własny kanał: "+id);
   requestSwitch();
 }
+// Uruchamia aktualnie wybrana pozycje: pobiera jej OFM ID z katalogu,
+// a nastepnie przekazuje je do asynchronicznego silnika HLS.
 static void playCurrent(){
   String id=ownId.length()?ownId:OpenFmCatalog::resolveId(station);
   if(id.isEmpty()) {
@@ -192,10 +303,11 @@ static void playCurrent(){
   Serial.println("[TEST] Uruchamiam "+id);
   if(!OpenFmPlayer::start(id,muted?0:volume))Serial.println("[TEST] Nie udalo sie wystartowac HLS");
 }
+// Wyswietla liste polecen dostepnych w monitorze portu szeregowego.
 static void printHelp(){
  Serial.println("\n====== OPENFM HLS PLAYER ======");
  Serial.println("g 1..200 - wybierz pozycje; 1..9 - szybki wybor");
- Serial.println("Katalog 200 nazw; OFM jest ustalane z przekierowania GETRADIO. Nie wszystkie pozycje musza byc HLS.");
+ Serial.println("Katalog 200 nazw; odtwarzane sa pozycje z potwierdzonym ID OFM. Nie wszystkie pozycje musza byc HLS.");
  Serial.println("o OFM10 - dowolny identyfikator OFM");
  Serial.println("n/p - nastepny/poprzedni kanal");
  Serial.println("meta wykonawca|tytul - PODGLAD TESTOWY metadanych (nie dane OpenFM)");
@@ -204,6 +316,8 @@ static void printHelp(){
  Serial.println("Nie wypisujemy adresow z tokenami do Serial.");
  Serial.println("================================\n");
 }
+// Parser polecen tekstowych. Wywolanie nastepuje po odebraniu znaku CR/LF.
+// Polecenia stacji trafiaja do selectStation(), a glosnosc do OpenFmPlayer.
 static void commandLine(String input){
   input.trim();if(!input.length())return;
   lastCommand=input;
@@ -231,10 +345,12 @@ static void commandLine(String input){
   else if(input=="m")OpenFmPlayer::stats();
   else if(input=="h")printHelp();
 }
+// Odbiera gotowa ramke NEC przygotowana przez ISR i mapuje kod przycisku
+// na zmiane stacji, glosnosci, STOP, restart lub MUTE.
 static void handleRemote(){
  if(!irReady)return;
  noInterrupts();uint32_t ir=pendingIr;irReady=false;interrupts();
- uint8_t address=ir&255,invAddr=(ir>>8)&255,key=(ir>>16)&255,invKey=(ir>>24)&255;
+ uint8_t address=ir&255,invAddr=(ir>>8)&255,key=(ir>>16)&255,invKey=(ir>>24)&255; // Bajty adresu/komendy NEC.
  if((uint8_t)(key^invKey)!=0xff) {Serial.println("[IR] Niepoprawna ramka NEC");return;}
  // Adres NEC bywa rozszerzony; w pilocie rozpoznajemy kod komendy.
  if(millis()-lastIr<120)return;lastIr=millis();
@@ -272,9 +388,13 @@ static void handleRemote(){
 // setek kilobajtów obrazu po SPI.
 // ============================================================================
 
-// Naglowek: numer pozycji jest PIERWSZA LINIA, bez nazw kanalow.
-// Wykonawca/tytul sa rezerwowane na przyszle sprawdzone zrodlo metadanych.
-// Nie parsujemy ich z tokenu HLS, bo nie ma ich w jego odpowiedzi JSON.
+// Gorny panel TFT: numer pozycji, nazwa, wykonawca, tytul, stan i glosnosc.
+// Dane wykonawcy/tytulu pochodza z OpenFmMetadata::snapshot(), a nie z tokenu.
+// Nazwa kanalu jest pobierana z lokalnego katalogu OpenFmCatalog.
+// Wykonawca i tytul sa aktualizowane z parsera ID3v2 w module OpenFmMetadata.
+// Token HLS sluzy do autoryzacji playlisty; nie jest zrodlem metadanych utworu.
+// Rysuje panel gorny tylko wtedy, gdy zmienil sie jego podpis (signature)
+// albo wywolujacy jawnie wymusil odswiezenie. Zapobiega niepotrzebnym zapisom SPI.
 static void renderHeadline(bool force=false) {
   if(!canvas.getBuffer()) return;
   const String status = pendingPlay ? "ZMIANA..." : OpenFmPlayer::state();
@@ -289,13 +409,13 @@ static void renderHeadline(bool force=false) {
   canvas.setFont(nullptr);
   canvas.setTextWrap(false);
   canvas.setTextSize(3);
-  canvas.setTextColor(0x07EF);  // Wiosenna zieleń (RGB565)
+  canvas.setTextColor(0x07EF);  // Kolor RGB565: wiosenna zielen.
   canvas.setCursor(12,10);
   canvas.printf("Open FM stacja %03d/%03d",station+1,COUNT); // stala pozycja pierwszej linii
   canvas.drawFastHLine(8,49,WIDTH-16,0x39E7);
 
   canvas.setTextSize(2);
-  canvas.setTextColor(0xFEA0);  // Złoty (RGB565)
+  canvas.setTextColor(0xFEA0);  // Kolor RGB565: zloty.
   canvas.setCursor(12,56);
   // Przy 2x (12 px/znak) miesci sie ok. 38 znakow od x=12.
   // Zostawiamy priorytet nazwie. OFM ID wypisujemy w monitorze Serial.
@@ -310,15 +430,18 @@ static void renderHeadline(bool force=false) {
   canvas.print("Tytul: ");
   canvas.print(currentTitle.isEmpty()?"--":currentTitle.substring(0,31));
 
-  canvas.setTextColor(0xFD20);
+  canvas.setTextColor(0xFD20);  // Kolor RGB565: pomaranczowy dla statusu.
   canvas.setCursor(12,137);
   canvas.print("Stan: ");canvas.print(status);
-  canvas.setTextColor(0x07E0);
+  canvas.setTextColor(0x07E0);  // Kolor RGB565: intensywna zielen dla glosnosci.
   canvas.setCursor(12,163);
   canvas.print("VOL: ");canvas.print(muted?0:volume);canvas.print("/21");
   pushCanvasRegion(0,0,WIDTH,188);
 }
 
+// Rysuje parametry odebrane z silnika audio: bitrate MPEG-TS, sample rate AAC,
+// rozdzielczosc PCM, liczbe kanalow oraz liczniki segmentow i bajtow ostatniego TS.
+// Dane pobierane sa przez interfejs OpenFmPlayer; ekran nie ingeruje w dekoder.
 static void renderAudioInfo(bool force=false) {
   if (!canvas.getBuffer()) return;
   const uint32_t kbps = OpenFmPlayer::bitrateKbps();            // Pomiar TS, nie AAC.
@@ -379,6 +502,8 @@ static void renderAudioInfo(bool force=false) {
 // Nie ma tez awaryjnej zamiany na zwykla czcionke GFX przy szerszej cyfrze.
 // Kadr zegara jest wysylany przez SPI 40 MHz tylko przy zmianie sekundy.
 // ============================================================================
+// Rysuje zegar z synchronizowanego czasu systemowego (NTP). Pozycja bazowa
+// czcionki DS_DIGII35pt7b jest stala, aby szerokosc cyfr nie powodowala skakania.
 static void renderClock(bool force=false) {
   if (!canvas.getBuffer()) return;
   time_t now = time(nullptr);
@@ -399,7 +524,7 @@ static void renderClock(bool force=false) {
   canvas.fillRect(CLOCK_X, CLOCK_Y, CLOCK_W, CLOCK_H, 0x0000);
   canvas.setFont(&DS_DIGII35pt7b);
   canvas.setTextSize(1);
-  canvas.setTextColor(0x07FF);
+  canvas.setTextColor(0x07FF);  // Kolor RGB565: cyjan dla zegara.
   canvas.setTextWrap(false);
   canvas.setCursor(245, 310);  // Oryginalna stala baza, bez przeliczania szerokosci.
   canvas.print(timeText);
@@ -411,6 +536,8 @@ static void renderClock(bool force=false) {
 
 // Oddzielne zadanie odczytuje ID3 z MPEG-TS; ekran pobiera tylko gotowy wynik.
 // Bez HTTPS, dekodowania ani operacji blokujacych w petli TFT.
+// Pobiera atomowy snapshot metadanych z modulu OpenFmMetadata.
+// Numer wersji pozwala odswiezyc ekran tylko wtedy, gdy zmienil sie tag ID3.
 static void updateOpenFmMetadata() {
   String artist,title;
   uint32_t version=0;
@@ -422,6 +549,8 @@ static void updateOpenFmMetadata() {
   screenDirty=true;
 }
 
+// Nieblokujaca obsluga obrazu: metadane, panel tekstowy, parametry audio i zegar.
+// Zegar jest sprawdzany co 100 ms, ale wysylany na TFT dopiero po zmianie sekundy.
 static void screenLoop() {
   updateOpenFmMetadata();
   // Reakcja na pilota nie musi czekać na kolejny cykl zegara.
@@ -444,42 +573,51 @@ static void screenLoop() {
   }
 }
 
+// ---------------------------------------------------------------------------
+// SETUP - jednorazowa inicjalizacja urzadzenia po wlaczeniu lub resecie.
+// Kolejnosc: Serial -> TFT -> IR -> Wi-Fi -> NTP -> wybor pierwszej stacji.
+// ---------------------------------------------------------------------------
 void setup(){
- Serial.begin(115200);delay(400);
- Serial.printf("[BOOT] reset=%d heap=%u psram=%u\n",(int)esp_reset_reason(),(unsigned)ESP.getFreeHeap(),(unsigned)ESP.getFreePsram());
- tftBegin();
- pinMode(PIN_IR,INPUT_PULLUP);
- lastTransition=micros();attachInterrupt(digitalPinToInterrupt(PIN_IR),irChange,CHANGE);
- WiFi.mode(WIFI_STA);
- WiFiManager wm;
- wm.setConfigPortalTimeout(150);
- if(!wm.autoConnect("ESP32S3-OpenFM-TEST")){
+ Serial.begin(115200);delay(400);                         // Uruchomienie diagnostyki Serial.
+ Serial.printf("[BOOT] reset=%d heap=%u psram=%u\n",(int)esp_reset_reason(),(unsigned)ESP.getFreeHeap(),(unsigned)ESP.getFreePsram()); // Stan pamieci i przyczyna resetu.
+ tftBegin();                                             // Inicjalizacja wyswietlacza i canvasu.
+ pinMode(PIN_IR,INPUT_PULLUP);                           // Odbiornik IR w stanie spoczynkowym HIGH.
+ lastTransition=micros();attachInterrupt(digitalPinToInterrupt(PIN_IR),irChange,CHANGE); // Start dekodowania NEC.
+ WiFi.mode(WIFI_STA);                                   // ESP32 pracuje jako klient sieci (Station).
+ WiFiManager wm;                                       // Obiekt zarzadzajacy portalem konfiguracji Wi-Fi.
+ wm.setConfigPortalTimeout(150);                       // Portal konfiguracyjny zamyka sie po 150 s.
+ if(!wm.autoConnect("ESP32S3-OpenFM-TEST")){            // Laczy z zapisana siecia lub uruchamia portal.
     Serial.println("[WiFi] Nie polaczono. Restart za 3s.");delay(3000);ESP.restart();
  }
  Serial.printf("[WiFi] IP=%s RSSI=%d\n",WiFi.localIP().toString().c_str(),WiFi.RSSI());
  // Polska strefa czasowa, automatyczna zmiana CET/CEST jak w glownym radiu.
- configTzTime("CET-1CEST,M3.5.0,M10.5.0/3","pool.ntp.org","time.google.com");
+ configTzTime("CET-1CEST,M3.5.0,M10.5.0/3","pool.ntp.org","time.google.com"); // Polska strefa CET/CEST + synchronizacja NTP.
  printHelp();
  Serial.println("[AUTO] Wi-Fi gotowe. Uruchamiam pierwszą stację listy.");
- selectStation(0);
+ selectStation(0);                                     // Automatyczny start od pierwszej pozycji katalogu.
  // Jednorazowe wyczyszczenie całości usuwa także pozostałości z poprzedniego
  // programu oraz niepożądane szare tło dolnego paska.
- canvas.fillScreen(0x0000);
- drawTft();
- screenDirty = true;
+ canvas.fillScreen(0x0000);                             // Czyszczenie calego bufora RGB565.
+ drawTft();                                             // Jednorazowe wyslanie czarnego ekranu do TFT.
+ screenDirty = true;                                   // Wymus pierwsze narysowanie paneli.
  screenLoop();
 }
+// ---------------------------------------------------------------------------
+// LOOP - glowna petla sterujaca. Nie wykonuje tu pobierania HLS ani dekodowania;
+// te zadania pracuja w module OpenFmPlayer na osobnych zadaniach FreeRTOS.
+// Petla odbiera Serial/pilot, realizuje odlozone przelaczenie i odswieza ekran.
+// ---------------------------------------------------------------------------
 void loop(){
- while(Serial.available()){
+ while(Serial.available()){                              // Odbior znakow komendy bez blokowania petli.
    char c=Serial.read();
    if(c=='\n'||c=='\r') {if(serialLine.length()){commandLine(serialLine);serialLine="";}}
    else if(serialLine.length()<350)serialLine+=c;
  }
- handleRemote();
- if(pendingPlay && !OpenFmPlayer::busy()){
+ handleRemote();                                       // Obsluga kompletnej ramki pilota NEC.
+ if(pendingPlay && !OpenFmPlayer::busy()){              // Nowa stacja dopiero po zakonczeniu poprzedniej sesji.
    pendingPlay=false;pendingStop=false;playCurrent();
  }
- if(pendingStop && !OpenFmPlayer::busy())pendingStop=false;
+ if(pendingStop && !OpenFmPlayer::busy())pendingStop=false; // Zwolnienie flagi po zakonczeniu STOP.
  // Gdy HTTPS faktycznie utknie, nie podmieniamy zasobow na sile.
  // Serial wyjasni dlaczego pilot czeka, a kolejne strzalki wybieraja ostatni kanal.
  if(pendingPlay && OpenFmPlayer::busy() && millis()-switchRequestedAt>6500 &&
@@ -488,6 +626,6 @@ void loop(){
    Serial.printf("[STEROWANIE] Oczekiwanie na STOP %lu ms; %s\n",
        (unsigned long)(millis()-switchRequestedAt),OpenFmPlayer::state().c_str());
  }
- screenLoop();
- delay(3);
+ screenLoop();                                         // Aktualizacja paneli i zegara bez pelnego odswiezania.
+ delay(3);                                              // Krotkie oddanie czasu innym zadaniom FreeRTOS.
 }
