@@ -20,6 +20,8 @@ static volatile uint32_t playedBytes=0, receivedBytes=0, segmentCount=0;
 static volatile uint32_t latestSegmentBytes=0; // rozmiar ostatniego kompletnego segmentu
 static volatile uint32_t tsKbps=0, decodedHz=0;            // parametry raportowane ekranowi
 static volatile uint8_t decodedChannels=0, decodedBits=0; // odczyt z dekodera Helix
+static uint32_t activeI2SHz=0;                            // faktyczna czestotliwosc ustawiona na wyjsciu I2S
+static uint8_t activeI2SChannels=0, activeI2SBits=0;
 static volatile uint8_t statusCode=0; // 0=STOP,1=START,2=GRA,3=ERROR,4=STOPPING
 static String channelId;
 static TaskHandle_t controlTask=nullptr, playbackTask=nullptr;
@@ -112,10 +114,31 @@ static void decodingTask(void*) {
       playedBytes += (uint32_t)n;
       // AudioInfo pochodzi z faktycznego dekodera AAC, a nie z ustawien I2S.
       auto info = aac.audioInfo();
-      if (info.sample_rate >= 8000 && info.sample_rate <= 192000) {
+      if (info.sample_rate >= 8000 && info.sample_rate <= 96000 &&
+          info.channels >= 1 && info.channels <= 2 &&
+          (info.bits_per_sample == 16 || info.bits_per_sample == 24 || info.bits_per_sample == 32)) {
         decodedHz = (uint32_t)info.sample_rate;
         decodedChannels = info.channels;
         decodedBits = info.bits_per_sample;
+
+        // Helix wykrywa format z naglowka AAC. Aktualizujemy VolumeStream,
+        // ktory przekazuje AudioInfo dalej do I2SStream (PCM5102A).
+        // Zmiana odbywa sie tylko po wykryciu innego formatu, nie dla kazdej ramki.
+        const bool formatChanged =
+          activeI2SHz != (uint32_t)info.sample_rate ||
+          activeI2SChannels != (uint8_t)info.channels ||
+          activeI2SBits != (uint8_t)info.bits_per_sample;
+
+        if (formatChanged) {
+          const uint32_t oldRate = activeI2SHz;
+          volumeOutput.setAudioInfo(info);
+          activeI2SHz = (uint32_t)info.sample_rate;
+          activeI2SChannels = (uint8_t)info.channels;
+          activeI2SBits = (uint8_t)info.bits_per_sample;
+          Serial.printf("[I2S] Automatyczna zmiana formatu: %lu -> %lu Hz, %u kan., %u bit\n",
+            (unsigned long)oldRate, (unsigned long)activeI2SHz,
+            (unsigned)activeI2SChannels, (unsigned)activeI2SBits);
+        }
       }
     } else vTaskDelay(pdMS_TO_TICKS(5));
   }
@@ -208,6 +231,17 @@ static void worker(void*) {
       audioBuffer.setReadMaxWait(pdMS_TO_TICKS(40));
       audioBuffer.clear();
       byteQueue.begin(40);
+
+      // Jawne polaczenie powiadomien o zmianie formatu:
+      // AAC/MTS -> EncodedAudioStream -> VolumeStream -> I2SStream.
+      // Dzieki temu I2S moze zmienic zegar probkowania, gdy Helix wykryje
+      // np. 44100 Hz albo 48000 Hz. Dodatkowa kontrola w decodingTask()
+      // stanowi zabezpieczenie, gdyby dana wersja MTSDecoder nie propagowala
+      // powiadomienia automatycznie.
+      decoded.addNotifyAudioChange(volumeOutput);
+      activeI2SHz = (uint32_t)cfg.sample_rate;
+      activeI2SChannels = (uint8_t)cfg.channels;
+      activeI2SBits = (uint8_t)cfg.bits_per_sample;
       decoded.begin();
       if(xTaskCreatePinnedToCore(decodingTask,"OFM_DECODE",12288,nullptr,3,&playbackTask,1)!=pdPASS){
         Serial.println("[AAC] Blad tworzenia zadania");
@@ -294,6 +328,7 @@ bool start(const String &channel,int volume) {
   OpenFmMetadata::reset();
   receivedBytes=playedBytes=segmentCount=latestSegmentBytes=0;
   tsKbps=decodedHz=0;decodedChannels=decodedBits=0;
+  activeI2SHz=0;activeI2SChannels=activeI2SBits=0;
   stopRequested=false;running=true;statusCode=1;
   if(xTaskCreatePinnedToCore(worker,"OFM_HTTP",16384,nullptr,2,&controlTask,0)!=pdPASS) {
     running=false;statusCode=3;return false;
