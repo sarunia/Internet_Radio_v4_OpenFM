@@ -1,5 +1,6 @@
 #include "OpenFmPlayer.h"
 #include "OpenFmResolver.h"
+#include "OpenFmMetadata.h"
 #include <Arduino.h>
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
@@ -159,6 +160,7 @@ static bool downloadSegment(const String& url) {
     int n=stream->read(block,want);
     if(n<=0)break;
     remaining-=n;received+=n;lastData=millis();
+    OpenFmMetadata::feed(block,(size_t)n); // niezalezny od dekodera odczyt ID3 z PID MPEG-TS
     // queue.write może chwilowo oczekiwać, aż dekoder zwolni miejsce.
     size_t pos=0;
     while(pos<(size_t)n && !stopRequested) {
@@ -193,7 +195,7 @@ static void worker(void*) {
     {
       auto cfg=audioI2S.defaultConfig(TX_MODE);
       cfg.port_no=0; cfg.pin_bck=BCLK; cfg.pin_ws=LRCK; cfg.pin_data=DATA;
-      cfg.sample_rate=44100;cfg.channels=2;cfg.bits_per_sample=16;
+      cfg.sample_rate=48000;cfg.channels=2;cfg.bits_per_sample=16;
       if(!audioI2S.begin(cfg)){Serial.println("[I2S] Blad inicjalizacji");goto finish;}
       auto vc=volumeOutput.defaultConfig();vc.copyFrom(cfg);
       volumeOutput.begin(vc);
@@ -253,6 +255,7 @@ static void worker(void*) {
           }
           Serial.printf("[AUDIO] seg=%lu bytes=%lu dekoder=%lu\n",
             (unsigned long)segmentCount,(unsigned long)receivedBytes,(unsigned long)playedBytes);
+          if(segmentCount==1 || (segmentCount%5)==0) OpenFmMetadata::diagnostics();
         }
         if(errors>=5 || playlist.ended)break;
         // Playlista live; co ~2 s szukamy nowszych numerow sekwencji.
@@ -288,6 +291,7 @@ bool start(const String &channel,int volume) {
   if(!WiFi.isConnected())return false;
   if(channel.length()<4 || !channel.startsWith("OFM"))return false;
   channelId=channel;wantedVolume=constrain(volume,0,21);
+  OpenFmMetadata::reset();
   receivedBytes=playedBytes=segmentCount=latestSegmentBytes=0;
   tsKbps=decodedHz=0;decodedChannels=decodedBits=0;
   stopRequested=false;running=true;statusCode=1;
@@ -307,7 +311,7 @@ uint32_t bitrateKbps(){return tsKbps;}
 uint32_t sampleRate(){return decodedHz;}
 uint8_t channels(){return decodedChannels;}
 uint8_t bitsPerSample(){return decodedBits;}
-void stats(){Serial.printf("[HLS] status=%s seg=%lu NET=%lu DECODE=%lu RAM=%u PSRAM=%u\n",
+void stats(){OpenFmMetadata::diagnostics();Serial.printf("[HLS] status=%s seg=%lu NET=%lu DECODE=%lu RAM=%u PSRAM=%u\n",
  state().c_str(),(unsigned long)segmentCount,(unsigned long)receivedBytes,(unsigned long)playedBytes,
  (unsigned)ESP.getFreeHeap(),(unsigned)ESP.getFreePsram());}
 }
