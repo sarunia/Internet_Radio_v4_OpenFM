@@ -182,17 +182,38 @@ Możliwe kierunki rozwoju to osobne, wiarygodne źródło aktualnie odtwarzanego
 - [ ] Weryfikacja certyfikatów TLS.
 - [ ] Trwały zapis ulubionych kanałów / ostatniej stacji.
 
-## Podziękowania i projekty wykorzystane
+## Licencja open source — GPL-3.0
 
-- [Arduino Audio Tools — Phil Schatzmann](https://github.com/pschatzmann/arduino-audio-tools)
-- [Arduino libhelix — Phil Schatzmann](https://github.com/pschatzmann/arduino-libhelix)
-- [ArduinoJson](https://arduinojson.org/)
-- [WiFiManager — tzapu](https://github.com/tzapu/WiFiManager)
-- [Adafruit GFX](https://github.com/adafruit/Adafruit-GFX-Library)
-- [Artykuł: HTTP Live Streaming (HLS) with the Arduino Audio Tools](https://www.pschatzmann.ch/home/2025/04/09/http-live-streaming-hls-with-the-arduino-audio-tools/)
+**Ten projekt jest udostępniany jako wolne oprogramowanie na warunkach GNU General Public License, wersja 3.0 (GPL-3.0-only)** — w zakresie kodu, do którego autorzy repozytorium posiadają prawa autorskie i mogą go licencjonować.
 
-**OpenFM** jest znakiem / usługą jej właściciela. Projekt ma charakter niezależny i edukacyjno-hobbystyczny. Korzystaj ze strumieni zgodnie z obowiązującymi warunkami dostawcy.
+Możesz bezpłatnie **używać, analizować, modyfikować i rozpowszechniać** kod na warunkach GPL-3.0. W przypadku rozpowszechniania zmienionych wersji należy m.in. udostępnić odpowiedni kod źródłowy na zasadach tej licencji, zachować informacje o prawach autorskich i licencji oraz wskazać istotne zmiany. Pełna treść licencji znajduje się w pliku [`LICENSE`](LICENSE).
 
-## Licencja
+Projekt udostępniany jest **bez gwarancji**, w zakresie dopuszczonym przez obowiązujące prawo. Jest to niezależny projekt hobbystyczny, nieoficjalny produkt OpenFM.
 
-Przed publikacją własnej licencji sprawdź licencje wykorzystanych bibliotek i ewentualnych dołączonych plików (w szczególności czcionek). **Licencja kodu tego repozytorium nie została jeszcze określona** — dodaj odpowiedni plik `LICENSE`, jeśli zdecydujesz się udostępniać kod na konkretnych warunkach.
+> **Ważne:** licencja tego repozytorium nie zmienia licencji bibliotek zewnętrznych. Kod i zasoby innych autorów (w tym ewentualnie dołączone czcionki) pozostają objęte ich oryginalnymi warunkami. Przed publikacją upewnij się, że masz prawo rozpowszechniać wszystkie pliki znajdujące się w repozytorium. Jeżeli wykorzystujesz kod przejęty z innego projektu, zachowaj jego oryginalne informacje o prawach autorskich i licencji.
+
+### Podziękowania dla autorów i społeczności open source
+
+Projekt powstał dzięki pracy autorów bibliotek i narzędzi, bez których realizacja odtwarzacza na ESP32-S3 byłaby znacznie trudniejsza. Szczególne podziękowania dla:
+
+| Projekt | Autorzy / opiekunowie | Wykorzystanie | Licencja biblioteki |
+|---|---|---|---|
+| [Arduino Audio Tools](https://github.com/pschatzmann/arduino-audio-tools) | **Phil Schatzmann** i współtwórcy | Interfejsy audio, I2S, dekodowanie i buforowanie | GPL-3.0 |
+| [arduino-libhelix](https://github.com/pschatzmann/arduino-libhelix) | **Phil Schatzmann** i współtwórcy | Dekodowanie AAC/MP3 | Zweryfikuj licencję zainstalowanej wersji/forka; wariant DevLab: GPL-3.0 |
+| [DevLab Audio Tools](https://github.com/UNIT-Electronics-MX/unit_devlab_fork_arduino_audio_tools) | **UNIT Electronics**, Cesar Bautista, Adrián Rabadán i współtwórcy | Wariant Audio Tools używany podczas testów | GPL-3.0 |
+| [ArduinoJson](https://github.com/bblanchon/ArduinoJson) | **Benoît Blanchon** | Odczyt JSON z API OpenFM | MIT |
+| [WiFiManager](https://github.com/tzapu/WiFiManager) | **tzapu**, **tablatronix** i współtwórcy | Konfiguracja sieci Wi-Fi | MIT |
+| [Adafruit GFX Library](https://github.com/adafruit/Adafruit-GFX-Library) | **Limor „Ladyada” Fried**, Adafruit Industries i współtwórcy | Rysowanie grafiki i `GFXcanvas16` | BSD |
+| [Arduino core for ESP32](https://github.com/espressif/arduino-esp32) | **Espressif Systems** i społeczność | Wi-Fi, SPI, FreeRTOS, NTP, GPIO | Zgodnie z licencjami komponentów platformy |
+
+Dodatkowe podziękowania dla **Phila Schatzmanna** za artykuł [*HTTP Live Streaming (HLS) with the Arduino Audio Tools*](https://www.pschatzmann.ch/home/2025/04/09/http-live-streaming-hls-with-the-arduino-audio-tools/), który był ważną inspiracją podczas rozwoju obsługi HLS.
+
+Dziękuję również społeczności Arduino i ESP32 za dokumentację, przykłady oraz publiczne projekty umożliwiające eksperymentowanie i dzielenie się rozwiązaniami.
+
+### Zastrzeżenia dotyczące OpenFM
+
+**OpenFM** oraz powiązane nazwy i znaki towarowe należą do ich właścicieli. Ten projekt **nie jest powiązany, sponsorowany ani zatwierdzony przez OpenFM**. Dostępność strumieni, tokenów i metadanych zależy od usługodawcy; korzystaj z nich zgodnie z obowiązującymi warunkami.
+
+---
+
+**Jeżeli projekt Ci się przydał, możesz oznaczyć repozytorium gwiazdką ⭐, zgłosić błąd lub zaproponować poprawkę. Współpraca i rozwój na otwartym kodzie są mile widziane!**
