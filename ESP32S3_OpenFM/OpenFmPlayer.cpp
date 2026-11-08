@@ -195,7 +195,7 @@ static void worker(void*) {
     {
       auto cfg=audioI2S.defaultConfig(TX_MODE);
       cfg.port_no=0; cfg.pin_bck=BCLK; cfg.pin_ws=LRCK; cfg.pin_data=DATA;
-      cfg.sample_rate=48000;cfg.channels=2;cfg.bits_per_sample=16;
+      cfg.sample_rate=44100;cfg.channels=2;cfg.bits_per_sample=16;
       if(!audioI2S.begin(cfg)){Serial.println("[I2S] Blad inicjalizacji");goto finish;}
       auto vc=volumeOutput.defaultConfig();vc.copyFrom(cfg);
       volumeOutput.begin(vc);
