@@ -55,7 +55,7 @@
   Port szeregowy : 115200 bit/s
   Komendy        : g 1..200, o OFM10, n, p, s, r, +, -, m, h
   Test ekranu    : meta wykonawca|tytul (dane reczne, tylko do testu)
-  Pilot NEC      : strzalki - zmiana stacji, VOL+/VOL-, STOP, OK, MUTE
+  Pilot NEC      : gora/dol lista, OK zatwierdza, lewo/prawo zmienia stacje, VOL, STOP, MUTE
 
   BEZPIECZENSTWO I OGRANICZENIA
   -----------------------------------------------------------------------------
@@ -230,6 +230,18 @@ static void IRAM_ATTR irChange(){
 // ID nie jest rowne numerowi pozycji. OpenFmCatalog udostepnia identyfikatory
 // potwierdzone w katalogu; brakujace pozycje nie moga byc uzupelniane zgadywaniem.
 static constexpr int COUNT=200;
+
+// LISTA STACJI (jak w poprzednim radiu): wybor jest niezalezny od odtwarzania.
+// Gora/dol przesuwaja podswietlenie, OK uruchamia wybrana stacje.
+// Po 12 s bez przyciskow wracamy na ekran radia bez zmiany odtwarzania.
+static constexpr int STATION_LIST_ROWS = 8;       // Liczba widocznych wierszy na TFT 480x320.
+static constexpr uint32_t STATION_LIST_TIMEOUT_MS = 12000;
+static bool stationListActive = false;            // Czy widoczna jest lista zamiast ekranu radia.
+static bool stationListDirty = false;             // Przerysowanie tylko przy zmianie zaznaczenia.
+static int stationListSelection = 0;              // Zaznaczony indeks 0..199 (nie zmienia station).
+static int stationListFirst = 0;                  // Pierwszy widoczny indeks okna listy.
+static uint32_t stationListLastAction = 0;        // Czas ostatniego ruchu/otwarcia menu.
+
 // Zwraca znany identyfikator OFM dla pozycji; nie uruchamia odtwarzania.
 static String channelIdForSlot(int slot) {return OpenFmCatalog::knownId(slot);}
 
@@ -256,6 +268,98 @@ static String lastAudioSignature;            // Parametry odświeżamy wyłączn
 // Nie blokujemy odczytu przyciskow, gdy HTTPS pobiera jeszcze segment.
 // Zleca zmiane stacji bez blokowania petli glownej. Najpierw zatrzymuje
 // aktualny strumien; nowy kanal wystartuje dopiero po OpenFmPlayer::busy()==false.
+static void selectStation(int idx);  // Potrzebne dla zatwierdzenia wyboru z listy.
+
+// Otwiera przewijana liste i zaznacza aktualnie grajaca stacje.
+// Nie zatrzymuje HLS; metadane i odtwarzanie pracuja w tle.
+static void openStationList() {
+  if (stationListActive) return;
+  stationListActive = true;
+  stationListSelection = station;
+  stationListFirst = max(0, stationListSelection - STATION_LIST_ROWS / 2);
+  stationListFirst = min(stationListFirst, COUNT - STATION_LIST_ROWS);
+  stationListLastAction = millis();
+  stationListDirty = true;
+  Serial.printf("[LISTA] Otwarta, wybrano %d/%d\n", stationListSelection + 1, COUNT);
+}
+
+// Zamyka liste i wymusza jednokrotne odtworzenie wszystkich paneli TFT.
+static void closeStationList() {
+  if (!stationListActive) return;
+  stationListActive = false;
+  stationListDirty = false;
+  screenDirty = true;
+  clockDrawn = false;
+  lastHeadlineSignature = "";
+  lastAudioSignature = "";
+  lastClockText = "";
+}
+
+// Przewija zaznaczenie z zawijaniem konca listy do poczatku (i odwrotnie).
+// Nie zmienia aktualnie odtwarzanej stacji az do potwierdzenia OK.
+static void scrollStationList(int direction) {
+  if (!stationListActive) openStationList();
+  stationListSelection = (stationListSelection + direction + COUNT) % COUNT;
+  if (stationListSelection < stationListFirst)
+    stationListFirst = stationListSelection;
+  else if (stationListSelection >= stationListFirst + STATION_LIST_ROWS)
+    stationListFirst = stationListSelection - STATION_LIST_ROWS + 1;
+  stationListFirst = constrain(stationListFirst, 0, COUNT - STATION_LIST_ROWS);
+  stationListLastAction = millis();
+  stationListDirty = true;
+  Serial.printf("[LISTA] Zaznaczono %d/%d: %s\n", stationListSelection + 1,
+                COUNT, OpenFmCatalog::entry(stationListSelection).name);
+}
+
+// Zatwierdza podswietlony kanal. Ponowny wybor grajacej stacji nie restartuje HLS.
+static void confirmStationList() {
+  if (!stationListActive) return;
+  const int selected = stationListSelection;
+  closeStationList();
+  if (selected != station || ownId.length()) selectStation(selected);
+  else Serial.println("[LISTA] Wybrano obecnie grajaca stacje, bez restartu.");
+}
+
+// Rysuje liste 8 stacji z podswietleniem wyboru, numeracja i wskaznikiem ID.
+// Uzywa istniejacego canvasu i pushCanvasRegion; bez nowej biblioteki.
+static void drawStationList() {
+  if (!stationListActive || !stationListDirty || !canvas.getBuffer()) return;
+  stationListDirty = false;
+  canvas.fillRect(0, 0, WIDTH, HEIGHT, 0x0000);
+  canvas.setFont(nullptr);
+  canvas.setTextWrap(false);
+  canvas.setTextSize(2);
+  canvas.setTextColor(0xFEA0);                     // Zloty naglowek.
+  canvas.setCursor(10, 7);
+  canvas.printf("STACJE OPEN FM  %03d/%03d", stationListSelection + 1, COUNT);
+  canvas.drawFastHLine(8, 34, WIDTH - 16, 0x39E7);
+
+  for (int row = 0; row < STATION_LIST_ROWS; ++row) {
+    const int index = stationListFirst + row;
+    if (index >= COUNT) break;
+    const int y = 42 + row * 31;
+    const bool selected = (index == stationListSelection);
+    if (selected) canvas.fillRoundRect(4, y - 3, WIDTH - 8, 29, 4, 0x18C3);
+    canvas.setTextColor(selected ? 0x07FF : 0x07E0); // Czerwony wybor, zielone nazwy.
+    canvas.setCursor(10, y + 3);
+    canvas.printf("%03d ", index + 1);
+    // Nazwy z katalogu sa skrocone do szerokosci ekranu (2x GFX ~12px/znak).
+    const String name = String(OpenFmCatalog::entry(index).name);
+    canvas.print(name.substring(0, 30));
+    if (OpenFmCatalog::knownId(index).isEmpty()) { // ID jeszcze niepotwierdzone.
+      canvas.setTextColor(0xFD20);
+      canvas.setCursor(449, y + 3);
+      canvas.print("?");
+    }
+  }
+  canvas.setTextSize(1);
+  canvas.setTextColor(0xFFFF);
+  canvas.setCursor(9, 298);
+  canvas.print("GORA/DOL: wybor   OK: graj   STOP: zamknij");
+  // Menu nie odswieza sie co sekunde, lecz tylko po nacisnieciu przycisku.
+  pushCanvasRegion(0, 0, WIDTH, HEIGHT);
+}
+
 static void requestSwitch(){
   pendingPlay=true;
   screenDirty=true;                      // Nowa stacja musi pojawić się od razu na TFT.
@@ -273,6 +377,7 @@ static void requestSwitch(){
 // Wybiera pozycje katalogu z zawijaniem: po 200 wraca do 1, przed 1 do 200.
 // Czysci metadane poprzedniego utworu i zleca przelaczenie odtwarzacza.
 static void selectStation(int idx){
+  closeStationList();
   station=(idx+COUNT)%COUNT;
   ownId="";
   currentArtist="";currentTitle="";
@@ -283,6 +388,7 @@ static void selectStation(int idx){
 // Umozliwia uruchomienie dowolnego kanalu OFM wpisanego recznie w Serial.
 // Akceptuje zapis OFM10 oraz skrocony zapis 10.
 static void customStation(String id){
+  closeStationList();
   id.trim();id.toUpperCase();if(!id.startsWith("OFM"))id="OFM"+id;
   if(id.length()<4)return;
   ownId=id;
@@ -312,7 +418,9 @@ static void printHelp(){
  Serial.println("n/p - nastepny/poprzedni kanal");
  Serial.println("meta wykonawca|tytul - PODGLAD TESTOWY metadanych (nie dane OpenFM)");
  Serial.println("s - stop, r - start, + / - - glosnosc, m - pamiec, h - pomoc");
- Serial.println("Pilot NEC GPIO15: lewo/prawo, VOL+/VOL-, STOP, OK, MUTE");
+ Serial.println("Pilot: GORA/DOL = lista; OK = wybor; LEWO/PRAWO = natychmiastowa zmiana");
+ Serial.println("Na liscie: STOP = zamknij; brak ruchu przez 12 s = powrot.");
+ Serial.println("VOL+/VOL-, MUTE, STOP i FF+/- jak dotychczas.");
  Serial.println("Nie wypisujemy adresow z tokenami do Serial.");
  Serial.println("================================\n");
 }
@@ -356,19 +464,23 @@ static void handleRemote(){
  if(millis()-lastIr<120)return;lastIr=millis();
  Serial.printf("[IR] addr=0x%02X addr2=0x%02X cmd=0x%02X\n",address,invAddr,key);
  switch(key){
-  case 0x26: // w prawo - pilot Twojego głównego radia
-  case 0x22: // w dół - następna pozycja
-    selectStation(station+1);break;
-  case 0x27: // w lewo
-  case 0x30: // w górę - poprzednia pozycja
-    selectStation(station-1);break;
-  case 0x28:volume=min(21,volume+1);muted=false;OpenFmPlayer::setVolume(volume);break;
-  case 0x24:volume=max(0,volume-1);muted=false;OpenFmPlayer::setVolume(volume);break;
-  case 0x33:pendingPlay=false;pendingStop=OpenFmPlayer::busy();OpenFmPlayer::stop();break; // STOP
-  case 0x25:requestSwitch();break; // OK - restart wybranej stacji
-  case 0x29:muted=!muted;OpenFmPlayer::setVolume(muted?0:volume);break;
-  case 0x18:selectStation(station+1);break; // FF+ z pilota
-  case 0x19:selectStation(station-1);break; // FF- z pilota
+  case 0x26: selectStation(station+1); break; // PRAWO: od razu nastepna stacja.
+  case 0x27: selectStation(station-1); break; // LEWO: od razu poprzednia stacja.
+  case 0x22: scrollStationList(+1); break;  // DOL: nastepna pozycja na liscie.
+  case 0x30: scrollStationList(-1); break;  // GORA: poprzednia pozycja na liscie.
+  case 0x28: volume=min(21,volume+1);muted=false;OpenFmPlayer::setVolume(volume);break;
+  case 0x24: volume=max(0,volume-1);muted=false;OpenFmPlayer::setVolume(volume);break;
+  case 0x33: // STOP: zamyka liste; poza lista zachowuje dotychczasowy STOP audio.
+    if(stationListActive) closeStationList();
+    else {pendingPlay=false;pendingStop=OpenFmPlayer::busy();OpenFmPlayer::stop();}
+    break;
+  case 0x25: // OK: wybiera wskazana stacje; bez listy zachowuje restart.
+    if(stationListActive) confirmStationList();
+    else requestSwitch();
+    break;
+  case 0x29: muted=!muted;OpenFmPlayer::setVolume(muted?0:volume);break;
+  case 0x18: selectStation(station+1);break; // FF+ jak dotychczas.
+  case 0x19: selectStation(station-1);break; // FF- jak dotychczas.
   default:break;
  }
 }
@@ -460,7 +572,7 @@ static void renderAudioInfo(bool force=false) {
   lastAudioSignature = signature;
 
   canvas.fillRect(0, 188, WIDTH, 72, 0x0000);
-  canvas.fillRect(0, 260, 243, 60, 0x0000);                   // LEWA część dolnego paska czarna.
+  canvas.fillRect(0, 260, 245, 60, 0x0000);                   // LEWA część dolnego paska czarna.
   canvas.setFont(nullptr);
   canvas.setTextWrap(false);
   canvas.setTextSize(2);                                      // Każdy napis >= 2x GFX.
@@ -493,7 +605,7 @@ static void renderAudioInfo(bool force=false) {
   if (channels) canvas.print(channels); else canvas.print("--");
 
   pushCanvasRegion(0, 188, WIDTH, 72);                         // Tylko parametry u góry.
-  pushCanvasRegion(0, 260, 243, 60);                          // Tylko liczniki u dołu.
+  pushCanvasRegion(0, 260, 245, 60);                          // Tylko liczniki u dołu.
 }
 
 // ============================================================================
@@ -553,6 +665,12 @@ static void updateOpenFmMetadata() {
 // Zegar jest sprawdzany co 100 ms, ale wysylany na TFT dopiero po zmianie sekundy.
 static void screenLoop() {
   updateOpenFmMetadata();
+  if (stationListActive) {
+    // Tak jak w starym radiu: po 12 s bezczynnosci przywracamy ekran grania.
+    if (millis() - stationListLastAction >= STATION_LIST_TIMEOUT_MS)
+      closeStationList();
+    else { drawStationList(); return; }
+  }
   // Reakcja na pilota nie musi czekać na kolejny cykl zegara.
   const bool force = screenDirty;
   if (force) screenDirty = false;
