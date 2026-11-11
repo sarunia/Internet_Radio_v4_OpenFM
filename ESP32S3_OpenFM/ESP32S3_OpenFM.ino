@@ -95,6 +95,68 @@
 // Interfejs katalogu nazw stacji, slugów i identyfikatorów OFM.
 #include "OpenFmCatalog.h"
 
+// ============================================================================
+// PALETA KOLORÓW RGB565 — ILI9488 / Adafruit GFX
+// ============================================================================
+// Zmieniaj wartości po prawej stronie, aby zmienić wygląd całego radia.
+// RGB565: 5 bitów czerwieni, 6 zieleni i 5 niebieskiego.
+// Stałe dotyczą wyłącznie kolorów grafiki; kody pilota i polecenia TFT są osobne.
+namespace Kolory {
+  static constexpr uint16_t CZARNY                    = 0x0000;
+  static constexpr uint16_t BIALY                     = 0xFFFF;
+  static constexpr uint16_t CYJAN                     = 0x07FF;
+  static constexpr uint16_t ZIELONY                   = 0x07E0;
+  static constexpr uint16_t ZOLTY                     = 0xFFE0;
+  static constexpr uint16_t CZERWONY                  = 0xF800;
+  static constexpr uint16_t MAGENTA                   = 0xF81F;
+  static constexpr uint16_t ZLOTY                     = 0xFEA0;
+  static constexpr uint16_t POMARANCZOWY_JASNY        = 0xFD20;
+  static constexpr uint16_t JASNY_SZARONIEBIESKI      = 0xBDF7;
+  static constexpr uint16_t SZARY_CIEMNY              = 0x39E7;
+  static constexpr uint16_t TLO_ZAZNACZENIA           = 0x18C3;
+  static constexpr uint16_t ZIELONO_TURKUSOWY         = 0x07EF;
+
+  // Dodatkowe kolory do wykorzystania w kolejnych zmianach wyglądu:
+  static constexpr uint16_t NIEBIESKI                 = 0x001F;
+  static constexpr uint16_t GRANATOWY                 = 0x000F;
+  static constexpr uint16_t NIEBIESKI_JASNY           = 0x05FF;
+  static constexpr uint16_t BLEKITNY                  = 0xAEDC;
+  static constexpr uint16_t TURKUSOWY_JASNY           = 0x87FF;
+  static constexpr uint16_t MIETOWY                   = 0x87F0;
+  static constexpr uint16_t ZIELONY_JASNY             = 0x9FE5;
+  static constexpr uint16_t ZIELONY_CIEMNY            = 0x03E0;
+  static constexpr uint16_t LIMONKOWY                 = 0xAFE5;
+  static constexpr uint16_t ZOLTY_JASNY               = 0xFFEF;
+  static constexpr uint16_t ZOLTY_PASTELOWY           = 0xFFB3;
+  static constexpr uint16_t POMARANCZOWY              = 0xFC00;
+  static constexpr uint16_t BURSZTYNOWY               = 0xFD00;
+  static constexpr uint16_t KORALOWY                  = 0xFD10;
+  static constexpr uint16_t LOSOSIOWY                 = 0xFC0E;
+  static constexpr uint16_t ROZOWY                    = 0xFB56;
+  static constexpr uint16_t ROZOWY_JASNY              = 0xFC1F;
+  static constexpr uint16_t FUKSJA                    = 0xF81F;
+  static constexpr uint16_t FIOLETOWY                 = 0x801F;
+  static constexpr uint16_t FIOLETOWY_JASNY           = 0xD5BF;
+  static constexpr uint16_t LAWENDOWY                 = 0xC59F;
+  static constexpr uint16_t PURPUROWY                 = 0x780F;
+  static constexpr uint16_t CYJAN_JASNY               = 0xA7FF;
+  static constexpr uint16_t BLEKIT_LODOWY             = 0xE7FF;
+  static constexpr uint16_t SZARY                     = 0x8410;
+  static constexpr uint16_t SZARY_JASNY               = 0xC618;
+  static constexpr uint16_t SZARY_BARDZO_JASNY        = 0xE71C;
+  static constexpr uint16_t BIALY_CIEPLY              = 0xFFDE;
+  static constexpr uint16_t BIALY_ZIMNY               = 0xEFFF;
+  static constexpr uint16_t MORSKI                    = 0x04B0;
+  static constexpr uint16_t OLIWKOWY                  = 0x8400;
+  static constexpr uint16_t BORDOWY                   = 0x8000;
+  static constexpr uint16_t BRAZOWY                   = 0xA145;
+  static constexpr uint16_t PIASKOWY                  = 0xD6B3;
+  static constexpr uint16_t KREMOWY                   = 0xFFDC;
+  static constexpr uint16_t MIETOWA_BIEL              = 0xF7FE;
+}
+// ============================================================================
+
+
 // ---------------------------------------------------------------------------
 // KONFIGURACJA SPRZĘTOWA - piny zgodne z bazowym projektem radia.
 // Zmiana połączeń wymaga aktualizacji poniższych stałych oraz konfiguracji I2S
@@ -371,17 +433,17 @@ static void renderNumberInput(bool force = false) {
   if (stationNumberInput.isEmpty() || (!stationNumberDirty && !force) ||
       !canvas.getBuffer()) return;
   stationNumberDirty = false;
-  canvas.fillRect(0, 0, WIDTH, 50, 0x0000);
+  canvas.fillRect(0, 0, WIDTH, 50, Kolory::CZARNY);
   canvas.setFont(nullptr);
   canvas.setTextWrap(false);
   canvas.setTextSize(2);
-  canvas.setTextColor(0xFFE0); // żółty napis (RGB565).
+  canvas.setTextColor(Kolory::ZOLTY); // żółty napis (RGB565).
   canvas.setCursor(10, 10);
   canvas.print("WYBIERZ STACJE:");
-  canvas.setTextColor(0x07FF); // cyan: wpisywane cyfry.
+  canvas.setTextColor(Kolory::CYJAN); // cyan: wpisywane cyfry.
   canvas.setCursor(264, 10);
   canvas.print(stationNumberInput);
-  canvas.drawFastHLine(8, 43, WIDTH-16, 0x39E7);
+  canvas.drawFastHLine(8, 43, WIDTH-16, Kolory::SZARY_CIEMNY);
   pushCanvasRegion(0, 0, WIDTH, 50);
 }
 
@@ -404,18 +466,18 @@ static void drawStationListRow(int row) {
   const bool selected = (index == stationListSelection);
 
   // Kasujemy tylko obszar aktualnego wiersza, razem z poprzednim podswietleniem.
-  canvas.fillRect(0, y - 3, WIDTH, 31, 0x0000);
+  canvas.fillRect(0, y - 3, WIDTH, 31, Kolory::CZARNY);
   canvas.setFont(nullptr);
   canvas.setTextWrap(false);
   canvas.setTextSize(2);
-  if (selected) canvas.fillRoundRect(4, y - 3, WIDTH - 8, 29, 4, 0x18C3);
-  canvas.setTextColor(selected ? 0x07FF : 0x07E0); // Numer: cyan / zielony.
+  if (selected) canvas.fillRoundRect(4, y - 3, WIDTH - 8, 29, 4, Kolory::TLO_ZAZNACZENIA);
+  canvas.setTextColor(selected ? Kolory::CYJAN : Kolory::ZIELONY); // Numer: cyan / zielony.
   canvas.setCursor(10, y + 3);
   canvas.printf("%03d ", index + 1);
   const String name = String(OpenFmCatalog::entry(index).name);
-  OpenFmPolishText::print(canvas, name, 438, selected ? 0xF800 : 0x07E0, 2);
+  OpenFmPolishText::print(canvas, name, 438, selected ? Kolory::CZERWONY : Kolory::ZIELONY, 2);
   if (OpenFmCatalog::knownId(index).isEmpty()) {
-    canvas.setTextColor(0xFD20);
+    canvas.setTextColor(Kolory::POMARANCZOWY_JASNY);
     canvas.setCursor(449, y + 3);
     canvas.print("?");
   }
@@ -423,14 +485,14 @@ static void drawStationListRow(int row) {
 
 // Rysuje naglowek z numerem zaznaczonej pozycji.
 static void drawStationListHeader() {
-  canvas.fillRect(0, 0, WIDTH, 38, 0x0000);
+  canvas.fillRect(0, 0, WIDTH, 38, Kolory::CZARNY);
   canvas.setFont(nullptr);
   canvas.setTextWrap(false);
   canvas.setTextSize(2);
-  canvas.setTextColor(0xFEA0);
+  canvas.setTextColor(Kolory::ZLOTY);
   canvas.setCursor(10, 7);
   canvas.printf("STACJE OPEN FM  %03d/%03d", stationListSelection + 1, COUNT);
-  canvas.drawFastHLine(8, 34, WIDTH - 16, 0x39E7);
+  canvas.drawFastHLine(8, 34, WIDTH - 16, Kolory::SZARY_CIEMNY);
 }
 
 // Pierwsze otwarcie: pełny ekran. Podczas przewijania w widocznym oknie:
@@ -450,7 +512,7 @@ static void drawStationList() {
   const int currentRow = stationListSelection - stationListFirst;
 
   if (fullDraw) {
-    canvas.fillRect(0, 0, WIDTH, HEIGHT, 0x0000);
+    canvas.fillRect(0, 0, WIDTH, HEIGHT, Kolory::CZARNY);
   }
   drawStationListHeader();
   if (fullDraw || windowMoved) {
@@ -468,7 +530,7 @@ static void drawStationList() {
     canvas.setFont(nullptr);
     canvas.setTextWrap(false);
     canvas.setTextSize(1);
-    canvas.setTextColor(0xFFFF);
+    canvas.setTextColor(Kolory::BIALY);
     canvas.setCursor(9, 298);
     canvas.print("GORA/DOL: wybor   OK: graj   STOP: zamknij");
     pushCanvasRegion(0, 0, WIDTH, HEIGHT); // Tylko przy pierwszym otwarciu.
@@ -642,108 +704,145 @@ static void handleRemote(){
 // rozdzielamy ekran na 3 małe obszary. Pełnych 480x320 nie wysyłamy co sekundę.
 // Każda funkcja rysuje najpierw w pamięci, a potem wysyła TYLKO swój prostokąt.
 //
-//  0..188 px  : nazwa stacji, numer, status i głośność - tylko przy zmianie.
-// 188..260 px : aktualne parametry strumienia - tylko gdy wartości się zmienią.
-// 260..320 px : liczniki po lewej i cyfrowy zegar po prawej, osobno.
+//   0..208 px : nazwa stacji, wykonawca/tytuł po dwa wiersze i stan.
+// 208..260 px : parametry TS, Hz i PCM w jednej linii.
+// 260..320 px : liczniki i głośność po lewej, zegar po prawej.
 //
 // Dzięki temu praca sieciowa i dekoder AAC nie czekają na wielokrotne wysłanie
 // setek kilobajtów obrazu po SPI.
 // ============================================================================
 
-// Górny panel TFT: numer pozycji, nazwa, wykonawca, tytuł, stan i głośność.
-// Dane wykonawcy/tytułu pochodza z OpenFmMetadata::snapshot(), a nie z tokenu.
-// Nazwa kanału jest pobierana z lokalnego katalogu OpenFmCatalog.
-// Wykonawca i tytuł są aktualizowane z parsera ID3v2 w module OpenFmMetadata.
-// Token HLS służy do autoryzacji playlisty; nie jest źródłem metadanych utworu.
-// Rysuje panel górny tylko wtedy, gdy zmienił się jego podpis (signature)
-// albo wywołujący jawnie wymusił odświeżenie. Zapobiega niepotrzebnym zapisom SPI.
+// Górny panel: nagłówek, nazwa stacji, dwa wiersze wykonawcy i tytułu, stan.
+// Pozostaje GFXcanvas16, polskie glify UTF-8 i odświeżanie wyłącznie regionu.
+// Przeznaczamy obszar Y=0..207 na tekst, parametry TS/Hz/PCM są niżej.
+//
+// Drukuje tekst bezpośrednio za etykietą (po jednej spacji). Gdy w bieżącym
+// wierszu zabraknie miejsca, pozostały tekst trafia do drugiego wiersza,
+// zaczynającego się od lewego marginesu. Granice są liczone w znakach UTF-8,
+// nie w bajtach, aby polskie litery nie były rozdzielane na pół.
+// firstTextX - pozycja pierwszego znaku za etykietą i spacją.
+static void printTwoLineUtf8(const String& source, int x, int firstY,
+                             int firstTextX, uint16_t color, uint8_t size = 2) {
+  const String text = source.isEmpty() ? String("--") : source;
+  const int charWidth = 6 * (int)size;  // Identyczny krok dla ASCII i polskich glifów.
+  const int firstCapacity = (WIDTH - 8 - firstTextX) / charWidth;
+  if (firstCapacity <= 0) return;
+
+  int pos = 0;
+  int lastSpace = -1;
+  int count = 0;
+  // Liczymy pełne punkty kodowe UTF-8, zapisując granicę ostatniego słowa.
+  while (pos < (int)text.length() && count < firstCapacity) {
+    const unsigned char c = (unsigned char)text[pos];
+    if (c == ' ') lastSpace = pos;
+    int bytes = 1;
+    if ((c & 0xE0) == 0xC0) bytes = 2;
+    else if ((c & 0xF0) == 0xE0) bytes = 3;
+    else if ((c & 0xF8) == 0xF0) bytes = 4;
+    pos = min(pos + bytes, (int)text.length());
+    ++count;
+  }
+
+  int split = pos;
+  // Jeżeli mieści się całe słowo, łamiemy w ostatniej spacji.
+  // Gdy słowo jest zbyt długie, łamiemy po pełnym znaku UTF-8.
+  if (pos < (int)text.length() && lastSpace > 0) split = lastSpace;
+  String first = text.substring(0, split);
+  first.trim();
+  canvas.setCursor(firstTextX, firstY);
+  OpenFmPolishText::print(canvas, first, WIDTH - 8, color, size);
+
+  if (split < (int)text.length()) {
+    String second = text.substring(split);
+    second.trim();
+    canvas.setCursor(x, firstY + 21);
+    OpenFmPolishText::print(canvas, second, WIDTH - 8, color, size);
+  }
+}
+
+// Wypełnia Y=0..207; głośność przeniesiono na dół, obok liczby kanałów.
 static void renderHeadline(bool force=false) {
   if(!canvas.getBuffer()) return;
   const String status = pendingPlay ? "ZMIANA..." : OpenFmPlayer::state();
   const String id = ownId.length() ? ownId : channelIdForSlot(station);
   const String stationName = ownId.length() ? "Reczny kanal OpenFM" : String(OpenFmCatalog::entry(station).name);
   const String signature = String(station)+"|"+id+"|"+stationName+"|"+status+"|"+
-                           String(muted?0:volume)+"|"+currentArtist+"|"+currentTitle;
+                           currentArtist+"|"+currentTitle;
   if(!force && signature==lastHeadlineSignature)return;
   lastHeadlineSignature=signature;
 
-  canvas.fillRect(0,0,WIDTH,188,0x0000);
+  canvas.fillRect(0,0,WIDTH,208,Kolory::CZARNY);
   canvas.setFont(nullptr);
   canvas.setTextWrap(false);
   canvas.setTextSize(3);
-  canvas.setTextColor(0x07EF);  // Kolor RGB565: wiosenna zieleń.
-  canvas.setCursor(12,10);
-  canvas.printf("Open FM stacja %03d/%03d",station+1,COUNT); // stała pozycja pierwszej linii
-  canvas.drawFastHLine(8,49,WIDTH-16,0x39E7);
+  canvas.setTextColor(Kolory::ZIELONO_TURKUSOWY);
+  canvas.setCursor(45,10);
+  canvas.printf("Open FM stacja %03d/%03d",station+1,COUNT);
+  // Zrezygnowano z poziomej linii pod nagłówkiem, aby odzyskać miejsce.
 
-  canvas.setTextSize(2);
-  canvas.setTextColor(0xFEA0);  // Kolor RGB565: złoty.
-  canvas.setCursor(12,56);
-  // Przy 2x każdy znak zajmuje 12 px; limit wyznacza prawa krawędź.
-  // Zostawiamy priorytet nazwie. OFM ID wypisujemy w monitorze Serial.
-  OpenFmPolishText::print(canvas, stationName, WIDTH - 8, 0xFEA0, 2);
+  canvas.setTextSize(3);
+  canvas.setTextColor(Kolory::ZLOTY);
+  canvas.setCursor(12,45);  // Nazwa stacji: skala 3x, taka sama jak nagłówek.
+  OpenFmPolishText::print(canvas, stationName, WIDTH - 8, Kolory::ZLOTY, 3);
+  canvas.setTextSize(2);  // Pozostałe etykiety i metadane zachowują skalę 2x.
 
-  // Tekst UTF-8 mieści się w pozostałej szerokości, bez cięcia bajtów.
-  canvas.setTextColor(0xBDF7);
-  canvas.setCursor(12,83);
+  // Etykiety mają wyróżniający kolor cyan; właściwe metadane pozostają jasne.
+  // 6 px * skala 2 = 12 px na znak; doliczamy jedną spację po dwukropku.
+  canvas.setTextColor(Kolory::CYJAN);
+  canvas.setCursor(12,80);
   canvas.print("Wykonawca: ");
-  OpenFmPolishText::print(canvas, currentArtist.isEmpty()?String("--"):currentArtist, WIDTH - 8, 0xBDF7, 2);
-  canvas.setCursor(12,110);
-  canvas.print("Tytul: ");
-  OpenFmPolishText::print(canvas, currentTitle.isEmpty()?String("--"):currentTitle, WIDTH - 8, 0xBDF7, 2);
+  const int artistX = canvas.getCursorX();
+  canvas.setTextColor(Kolory::BIALY);
+  printTwoLineUtf8(currentArtist, 12, 80, artistX, Kolory::BIALY, 2);
 
-  canvas.setTextColor(0xFD20);  // Kolor RGB565: pomarańczowy dla statusu.
-  canvas.setCursor(12,137);
+  canvas.setTextColor(Kolory::CYJAN);
+  canvas.setCursor(12,134);
+  canvas.print("Tytul: ");
+  const int titleX = canvas.getCursorX();
+  canvas.setTextColor(Kolory::BIALY);
+  printTwoLineUtf8(currentTitle, 12, 134, titleX, Kolory::BIALY, 2);
+
+  canvas.setTextColor(Kolory::POMARANCZOWY_JASNY);
+  canvas.setCursor(12,190);  // Status poniżej dwóch wierszy tytułu; mieści się w panelu 208 px.
   canvas.print("Stan: ");canvas.print(status);
-  canvas.setTextColor(0x07E0);  // Kolor RGB565: intensywna zieleń dla głośności.
-  canvas.setCursor(12,163);
-  canvas.print("VOL: ");canvas.print(muted?0:volume);canvas.print("/21");
-  pushCanvasRegion(0,0,WIDTH,188);
+  pushCanvasRegion(0,0,WIDTH,208);
 }
 
-// Rysuje parametry odebrane z silnika audio: bitrate MPEG-TS, sample rate AAC,
-// rozdzielczość PCM, liczbę kanałów oraz liczniki segmentów i bajtów ostatniego TS.
-// Dane pobierane są przez interfejs OpenFmPlayer; ekran nie ingeruje w dekoder.
+// Jedna linia TS / Hz / PCM w Y=224; dolny pasek zachowuje zegar bez zmian.
+// Parametry i głośność odświeżają się tylko po zmianie odpowiednich wartości.
 static void renderAudioInfo(bool force=false) {
   if (!canvas.getBuffer()) return;
-  const uint32_t kbps = OpenFmPlayer::bitrateKbps();            // Pomiar TS, nie AAC.
-  const uint32_t hz = OpenFmPlayer::sampleRate();               // Parametr z Helix.
-  const uint8_t bits = OpenFmPlayer::bitsPerSample();           // Rozdzielczość PCM.
-  const uint8_t channels = OpenFmPlayer::channels();           // Kanały audio.
-  const uint32_t segments = OpenFmPlayer::segments();          // Licznik pobranych segmentów.
-  const uint32_t segmentBytes = OpenFmPlayer::lastSegmentBytes(); // Bajty ostatniego kompletnego segmentu TS.
+  const uint32_t kbps = OpenFmPlayer::bitrateKbps();
+  const uint32_t hz = OpenFmPlayer::sampleRate();
+  const uint8_t bits = OpenFmPlayer::bitsPerSample();
+  const uint8_t channels = OpenFmPlayer::channels();
+  const uint32_t segments = OpenFmPlayer::segments();
+  const uint32_t segmentBytes = OpenFmPlayer::lastSegmentBytes();
 
-  // Licznik segmentów zmienia się co kilka sekund; nie rysujemy nic, gdy
-  // żadna wartość nie zmieniła się od poprzedniego kadru.
   const String signature = String(kbps) + "|" + String(hz) + "|" + String(bits)
                           + "|" + String(channels) + "|" + String(segments)
-                          + "|" + String(segmentBytes);
+                          + "|" + String(segmentBytes) + "|" + String(muted ? 0 : volume);
   if (!force && signature == lastAudioSignature) return;
   lastAudioSignature = signature;
 
-  canvas.fillRect(0, 188, WIDTH, 72, 0x0000);
-  canvas.fillRect(0, 260, 245, 60, 0x0000);                   // LEWA część dolnego paska czarna.
+  canvas.fillRect(0, 208, WIDTH, 52, Kolory::CZARNY);
+  canvas.fillRect(0, 260, 245, 60, Kolory::CZARNY);
   canvas.setFont(nullptr);
   canvas.setTextWrap(false);
-  canvas.setTextSize(2);                                      // Każdy napis >= 2x GFX.
-  canvas.setTextColor(0xFFFF);
+  canvas.setTextSize(2);
+  canvas.setTextColor(Kolory::MAGENTA);
 
-  canvas.setCursor(12, 193);
-  canvas.print("TS: ");
-  if (kbps) canvas.print(kbps); else canvas.print("--");
-  canvas.print(" kb/s");
-
+  // Zwięzły zapis pozwala zmieścić wszystkie trzy parametry przy skali GFX 2x.
   canvas.setCursor(12, 224);
-  canvas.print("Hz: ");
+  canvas.print("TS:");
+  if (kbps) canvas.print(kbps); else canvas.print("--");
+  canvas.print("kb/s    Hz:");
   if (hz) canvas.print(hz); else canvas.print("--");
-  canvas.print("  PCM: ");
+  canvas.print("    PCM:");
   if (bits) canvas.print(bits); else canvas.print("--");
-  canvas.print(" bit");
+  canvas.print("bit");
 
-  canvas.setTextColor(0xBDF7);
-  // Trzy wiersze w lewym panelu 243x60 px; czcionka GFX 2x (wys. 16 px).
-  // Bajty seg. to DOKŁADNY rozmiar ostatniego CAŁKOWICIE pobranego pliku TS.
-  // Nie jest to narastające receivedBytes z raportu [AUDIO] na porcie Serial.
+  canvas.setTextColor(Kolory::JASNY_SZARONIEBIESKI);
   canvas.setCursor(12, 262);
   canvas.print("Segmenty: ");
   canvas.print(segments);
@@ -753,9 +852,12 @@ static void renderAudioInfo(bool force=false) {
   canvas.setCursor(12, 302);
   canvas.print("Kanaly: ");
   if (channels) canvas.print(channels); else canvas.print("--");
+  canvas.setTextColor(Kolory::ZIELONY_JASNY);
+  canvas.print("   VOL:");
+  canvas.print(muted ? 0 : volume);
 
-  pushCanvasRegion(0, 188, WIDTH, 72);                         // Tylko parametry u góry.
-  pushCanvasRegion(0, 260, 245, 60);                          // Tylko liczniki u dołu.
+  pushCanvasRegion(0, 208, WIDTH, 52);
+  pushCanvasRegion(0, 260, 245, 60);
 }
 
 // ============================================================================
@@ -783,10 +885,10 @@ static void renderClock(bool force=false) {
   static constexpr int CLOCK_Y = 260;
   static constexpr int CLOCK_W = WIDTH - CLOCK_X;
   static constexpr int CLOCK_H = HEIGHT - CLOCK_Y;
-  canvas.fillRect(CLOCK_X, CLOCK_Y, CLOCK_W, CLOCK_H, 0x0000);
+  canvas.fillRect(CLOCK_X, CLOCK_Y, CLOCK_W, CLOCK_H, Kolory::CZARNY);
   canvas.setFont(&DS_DIGII35pt7b);
   canvas.setTextSize(1);
-  canvas.setTextColor(0x07FF);  // Kolor RGB565: cyjan dla zegara.
+  canvas.setTextColor(Kolory::CYJAN);  // Kolor RGB565: cyjan dla zegara.
   canvas.setTextWrap(false);
   canvas.setCursor(245, 310);  // Oryginalna stała baza, bez przeliczania szerokości.
   canvas.print(timeText);
@@ -873,7 +975,7 @@ void setup(){
  selectStation(0);                                     // Automatyczny start od pierwszej pozycji katalogu.
  // Jednorazowe wyczyszczenie całości usuwa także pozostałości z poprzedniego
  // programu oraz niepożądane szare tło dolnego paska.
- canvas.fillScreen(0x0000);                             // Czyszczenie calego bufora RGB565.
+ canvas.fillScreen(Kolory::CZARNY);                             // Czyszczenie calego bufora RGB565.
  drawTft();                                             // Jednorazowe wyslanie czarnego ekranu do TFT.
  screenDirty = true;                                   // Wymus pierwsze narysowanie paneli.
  screenLoop();
