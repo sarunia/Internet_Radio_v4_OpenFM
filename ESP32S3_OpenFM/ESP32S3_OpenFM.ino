@@ -433,7 +433,7 @@ static void renderNumberInput(bool force = false) {
   if (stationNumberInput.isEmpty() || (!stationNumberDirty && !force) ||
       !canvas.getBuffer()) return;
   stationNumberDirty = false;
-  canvas.fillRect(0, 0, WIDTH, 50, Kolory::CZARNY);
+  canvas.fillRect(0, 0, WIDTH, 45, Kolory::CZARNY);
   canvas.setFont(nullptr);
   canvas.setTextWrap(false);
   canvas.setTextSize(2);
@@ -443,8 +443,8 @@ static void renderNumberInput(bool force = false) {
   canvas.setTextColor(Kolory::CYJAN); // cyan: wpisywane cyfry.
   canvas.setCursor(264, 10);
   canvas.print(stationNumberInput);
-  canvas.drawFastHLine(8, 43, WIDTH-16, Kolory::SZARY_CIEMNY);
-  pushCanvasRegion(0, 0, WIDTH, 50);
+  //canvas.drawFastHLine(8, 43, WIDTH-16, Kolory::SZARY_CIEMNY);
+  pushCanvasRegion(0, 0, WIDTH, 45);
 }
 
 // Zatwierdza podświetlony kanał. Ponowny wybór grajacej stacji nie restartuje HLS.
@@ -851,7 +851,7 @@ static void renderAudioInfo(bool force=false) {
   canvas.print(segmentBytes);
   canvas.setCursor(12, 302);
   canvas.print("Kanaly: ");
-  if (channels) canvas.print(channels); else canvas.print("--");
+  if (channels) canvas.print(channels); else canvas.print("-");
   canvas.setTextColor(Kolory::ZIELONY_JASNY);
   canvas.print("   VOL:");
   canvas.print(muted ? 0 : volume);
