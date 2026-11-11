@@ -1,6 +1,6 @@
 // Statyczny katalog OpenFM wygenerowany z openfm_stations(1).csv.
 // 200 pozycji; identyfikatory OFM pochodza z wynikow generatora GETRADIO.
-// 188 ID rozpoznanych, 12 pozycji bez potwierdzonego ID (fixedId=0).
+// 189 ID rozpoznanych, 11 pozycji bez potwierdzonego ID (fixedId=0).
 // Brak polaczen HTTP do GETRADIO z ESP32. Token HLS nadal pobiera OpenFmResolver.
 #include "OpenFmCatalog.h"
 
@@ -10,14 +10,14 @@ static const Entry entries[] = {
   {"Impreza", "impreza", 57},
   {"Trap PL", "trap-pl", 149},
   {"Weekend Chill", "weekend-chill", 6},
-  {"Po Polsku 60s & 70s", "po-polsku-60-70", 0},
+  {"Po Polsku 60s & 70s", "po-polsku-60-70", 12},
   {"90s Chill", "90s-chill", 195},
   {"1001 Hits", "1001-hits", 13},
   {"Biesiada Slaska", "biesiada-slaska", 101},
   {"100% Hits", "100-hits", 14},
   {"Vixa", "vixa", 207},
   {"Top 2026 Hits", "top-hits", 22},
-  {"Impreza PL", "impreza-pl", 0},
+  {"Impreza PL", "impreza-pl", 154},
   {"Weekend Hits", "weekend-hits", 7},
   {"90s Hits", "90s-hits", 33},
   {"To Jest Hip-Hop", "to-jest-hip-hop", 25},
@@ -72,7 +72,7 @@ static const Entry entries[] = {
   {"Smutno...", "smutne-piosenki", 47},
   {"Top Wszech Czasow - Rock PL", "top-wszech-czasow-rock-pl", 138},
   {"Smooth Jazz", "smooth-jazz", 105},
-  {"Po Polsku 90s", "po-polsku-90", 0},
+  {"Po Polsku 90s", "po-polsku-90", 19},
   {"Classic Hits", "classic-hits", 38},
   {"Piano Chill", "piano-chill", 234},
   {"Retro Cafe", "retro-cafe", 43},
@@ -95,7 +95,7 @@ static const Entry entries[] = {
   {"Radio Zlote Przeboje", "radio-zlote-przeboje", 0},
   {"Punk Rock", "punk-rock", 124},
   {"Happy", "happy", 46},
-  {"Hity Na Caly Dzien", "hity-na-caly-dzien", 0},
+  {"Hity Na Caly Dzien", "hity-na-caly-dzien", 232},
   {"90s Rock", "90s-rock", 197},
   {"Polska Rocks!", "polska-rocks", 135},
   {"We Dwoje", "we-dwoje", 52},
