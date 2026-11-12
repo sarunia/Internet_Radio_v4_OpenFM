@@ -1,574 +1,449 @@
-# ESP32-S3 OpenFM HLS — 200 nazw stacji i metadane ID3v2
+# Internet Radio v4 — OpenFM HLS na ESP32-S3
 
-**Wersja testowa (2026-11-08).** Komplet wszystkich plików źródłowych. Zmiany dotyczą
-katalogu i ekranu; tor odtwarzania HLS/TS/AAC, zegar i pilot zachowano.
+![ESP32-S3](https://img.shields.io/badge/platforma-ESP32--S3-0075A9)
+![OpenFM HLS](https://img.shields.io/badge/audio-HLS%20%7C%20AAC-0A9955)
+![Wyświetlacz](https://img.shields.io/badge/TFT-ILI9488%20480%C3%97320-6A5ACD)
+![Katalog](https://img.shields.io/badge/katalog-200%20pozycji-orange)
+![Status](https://img.shields.io/badge/status-wersja%20testowa-yellow)
+![Licencja](https://img.shields.io/badge/licencja-GPL--3.0--only-blue)
 
-## Co nowego
+**Samodzielne radio internetowe OpenFM**, zbudowane na **ESP32-S3 N16R8** (16 MB Flash, 8 MB PSRAM), z wyświetlaczem **ILI9488 IPS 480 × 320**, przetwornikiem **PCM5102A I2S** i pilotem podczerwieni **NEC**. Radio samodzielnie pobiera aktualny adres HLS z API OpenFM, odtwarza dźwięk AAC, wyświetla nazwę stacji, wykonawcę i tytuł utworu oraz parametry strumienia.
 
-- **200 pozycji z prawdziwymi nazwami i slugami** z publicznej listy https://getradio.reconv.pl/openfm.
-- Nazwa na drugiej linii TFT, numer `KANAL 001/200` na pierwszej.
-- **Tytuł i wykonawca**: dotychczasowy działający parser MPEG-TS PID 0x15 / PES / ID3v2 (`TIT2`, `TPE1`).
-- Numer `OFMxxx` nie jest numerem pozycji. Dla nieznanych kanałów urządzenie pyta `https://getradio.reconv.pl/openfm?s=<slug>` i bez śledzenia przekierowania czyta nagłówek `Location` (HTTP 3xx), z którego pobiera `OFMxxx`. Potem **dotychczasowy** `OpenFmResolver` pobiera token z OpenFM.
-- Dwa sprawdzone publiczne powiązania: `90s Dance -> OFM168` (opis Elektroda przekazany przez użytkownika) oraz `Impreza -> OFM57` (redirect GETRADIO); nie wymagają katalogu przy starcie. Pozostałe ustalane są w trakcie pracy, zapamiętywane tylko do restartu.
+Projekt jest hobbystyczną, **nieoficjalną** implementacją klienta OpenFM — nie jest powiązany organizacyjnie z operatorem usługi.
 
-## WAŻNE: ograniczenia
+> **Stan dokumentacji: 12 listopada 2026 r.** Projekt działa na rzeczywistym ESP32-S3, ale nadal jest rozwijany i testowany. Katalog zawiera **200 pozycji**, z czego **189 ma rozpoznany identyfikator `OFMxxx`**, a **11 pozycji pozostaje bez potwierdzonego ID**. Rozpoznanie identyfikatora nie jest równoznaczne z przetestowaniem odtwarzania każdej stacji.
 
-**Lista zawiera 200 rzeczywistych nazw katalogowych, lecz NIE oznacza to 200 zweryfikowanych strumieni OpenFM HLS.** GETRADIO wymienia także radia partnerskie/niezależne. Dla pozycji, która nie przekierowuje na domenę CDN OpenFM i `OFMxxx`, aplikacja wypisze błąd i nie uruchomi odtwarzania. Skorzystaj z `n`/`p`, aby przejść dalej. Format usługi GETRADIO nie jest stabilnym API.
+## Radio w praktyce
 
-Dostępność strumieni, metadanych ID3 i poprawność wszystkich 200 pozycji **nie została przetestowana** na urządzeniu. W testach użytkownika parser ID3 działał na `OFM10`. Długie nazwy na TFT są ucinane; czcionka GFX nie ma polskich znaków, dlatego nazwy na ekranie zapisano bez diakrytyków. Oryginalne nazwy są w katalogu GETRADIO.
+![Radio OpenFM na ESP32-S3 — wyświetlacz ILI9488](Pictures/20261111_134905.jpg)
 
-## Instalacja
-
-1. Rozpakuj **całe archiwum**. Nie mieszaj plików z różnymi wersjami.
-2. Otwórz `ESP32S3_OpenFM_200_Stacji_ID3.ino` w Arduino IDE z ESP32 core 3.3.12.
-3. Wszystkie pliki `.ino`, `.cpp`, `.h` pozostaw razem w jednym folderze o nazwie `ESP32S3_OpenFM_200_Stacji_ID3`.
-4. Biblioteki: WiFiManager, ArduinoJson, Adafruit GFX, DevLab_AudioTools, arduino-libhelix, czcionka `DS_DIGII35pt7b.h` zgodna z dotychczasowym projektem.
-5. Wybierz właściwą płytkę ESP32-S3 N16R8 z PSRAM i wgraj.
-
-## Obsługa
-
-- Pilot: w lewo/w prawo = poprzednia/następna, VOL +/- głośność, STOP/OK/MUTE jak wcześniej.
-- Monitor Serial **115200**: `g 1` .. `g 200`; `n`, `p`; `o OFM10` dla ręcznego kanału; `m` diagnostyka, `h` pomoc.
-- Numeracja jest pozycją w tej konkretnej liście (nie ID `OFM`).
-
-## Łącza sprzętowe
-
-- TFT ILI9488: CS GPIO5, DC GPIO4, SCK GPIO11, MOSI GPIO12, MISO GPIO13; canvas 480x320 i SPI 40 MHz.
-- Pilot NEC GPIO15.
-- I2S DAC PCM5102A: BCLK GPIO16, DIN GPIO17, LRCK GPIO18.
-
-## Dziennik diagnostyczny
-
-- `[KATALOG] ... -> OFMxxx`: pomyślne ustalenie identyfikatora.
-- `[KATALOG] ... to nie strumien OpenFM HLS`: stacja w katalogu, ale nieobsługiwana przez ten player.
-- `[ID3] ...`: pakiety transportowe i odczytane tagi.
-
-## Uznanie autorstwa i prawa
-
-GETRADIO i OpenFM są niezależnymi serwisami; ich dostępność i zasady użycia mogą się zmienić. Kod wykorzystuje biblioteki firm trzecich na ich własnych licencjach. Jeśli publikujesz ten projekt jako GPL-3.0, dołącz pełny `LICENSE` oraz wymagane informacje o autorach bibliotek, jak w swoim repozytorium. Nie umieszczaj kluczy Wi-Fi ani podpisanych tokenów w repozytorium.
-# OpenFM HLS Radio na ESP32-S3 — 200 stacji, ID3v2, ILI9488 i PCM5102A
-
-![Status](https://img.shields.io/badge/status-projekt%20rozwojowy-orange)
-![ESP32](https://img.shields.io/badge/platforma-ESP32--S3-blue)
-![HLS](https://img.shields.io/badge/streaming-HLS%20%2F%20AAC-green)
-![License](https://img.shields.io/badge/licencja-GPL--3.0--only-blue)
-
-**Samodzielny internetowy radioodtwarzacz OpenFM** zbudowany na **ESP32-S3 N16R8** (16 MB Flash / 8 MB PSRAM), z kolorowym ekranem **ILI9488 IPS 480 × 320**, przetwornikiem **PCM5102A (I2S)**, pilotem **NEC IR** oraz obsługą metadanych **ID3v2** odczytywanych bezpośrednio ze strumienia **HLS / MPEG-TS**.
-
-Projekt powstawał etapami: od uzyskania tokenu OpenFM i rozpracowania playlist, przez odtwarzanie AAC, po interfejs na TFT, katalog nazw stacji i rzeczywisty odczyt wykonawcy oraz tytułu utworu. Rozwiązanie jest **niezależnym projektem hobbystycznym**, a nie oficjalnym klientem OpenFM.
-
-> **Stan na 8 listopada 2026 r.:** odtwarzanie HLS/AAC, obsługa pilota, ekran i odczyt tytułu oraz wykonawcy z ID3v2 zostały potwierdzone w testach urządzenia, w szczególności na kanale `OFM10`. Katalog zawiera **200 pozycji/nazw**, ale **nie oznacza to 200 zweryfikowanych, działających kanałów OpenFM**. Częstotliwość 48 kHz dla `OFM10` została poprawiona i użytkownik potwierdził prawidłowe tempo odtwarzania. Automatyczny dobór częstotliwości I2S dla każdej stacji wymaga jeszcze dopracowania.
+*Zdjęcie urządzenia z katalogu [`Pictures`](Pictures/20261111_134905.jpg).*
 
 ## Spis treści
 
 - [Najważniejsze możliwości](#najważniejsze-możliwości)
-- [Potwierdzone testy i ograniczenia](#potwierdzone-testy-i-ograniczenia)
+- [Aktualny stan funkcji](#aktualny-stan-funkcji)
 - [Sprzęt i połączenia](#sprzęt-i-połączenia)
-- [Budowa i przepływ danych](#budowa-i-przepływ-danych)
-- [Jak działa OpenFM HLS](#jak-działa-openfm-hls)
-- [Metadane ID3v2 — wykonawca i tytuł](#metadane-id3v2--wykonawca-i-tytuł)
+- [Architektura odtwarzania](#architektura-odtwarzania)
 - [Katalog 200 stacji](#katalog-200-stacji)
-- [Wyświetlacz i zegar](#wyświetlacz-i-zegar)
-- [Ważne: prawidłowe tempo audio i I2S](#ważne-prawidłowe-tempo-audio-i-i2s)
-- [Środowisko i biblioteki](#środowisko-i-biblioteki)
-- [Struktura projektu](#struktura-projektu)
-- [Instalacja i uruchomienie](#instalacja-i-uruchomienie)
-- [Sterowanie pilotem i przez Serial](#sterowanie-pilotem-i-przez-serial)
-- [Diagnostyka i typowe problemy](#diagnostyka-i-typowe-problemy)
-- [Bezpieczeństwo i ograniczenia](#bezpieczeństwo-i-ograniczenia)
-- [Plan rozwoju](#plan-rozwoju)
-- [Licencja](#licencja)
+- [Interfejs TFT i polskie znaki](#interfejs-tft-i-polskie-znaki)
+- [Sterowanie pilotem NEC](#sterowanie-pilotem-nec)
+- [Polecenia monitora Serial](#polecenia-monitora-serial)
+- [Próbkowanie 44100 i 48000 Hz](#próbkowanie-44100-i-48000-hz)
+- [Metadane ID3v2](#metadane-id3v2)
+- [Pliki projektu](#pliki-projektu)
+- [Biblioteki i środowisko](#biblioteki-i-środowisko)
+- [Instalacja](#instalacja)
+- [Diagnostyka i znane ograniczenia](#diagnostyka-i-znane-ograniczenia)
+- [Bezpieczeństwo i licencja](#bezpieczeństwo-i-licencja)
 - [Podziękowania i źródła](#podziękowania-i-źródła)
 
 ## Najważniejsze możliwości
 
-- **OpenFM HLS** — pobieranie czasowego adresu playlisty przez endpoint tokenu, analiza playlist MASTER i MEDIA oraz pobieranie segmentów `.ts`.
-- **AAC → PCM przez Helix → I2S → PCM5102A** — wyjście analogowe audio bez zewnętrznego konwertera ESP8266 HLS/ICY.
-- **Osobny parser ID3v2** — odczyt `TIT2` (tytuł) i `TPE1` (wykonawca) z pakietów MPEG-TS/PES. Działa równolegle do dekodera audio.
-- **Do 200 pozycji stacji z nazwami** — tabela katalogowa oraz próba wyznaczenia rzeczywistego `OFMxxx` na podstawie przekierowania ze strony katalogu.
-- **Kolorowy TFT ILI9488 480 × 320** — rysowanie do `GFXcanvas16`, transfer RGB666 przez SPI przy **40 MHz** i aktualizacja wybranych obszarów.
-- **Zegar NTP** — godzina z sekundami, czcionka `DS_DIGII35pt7b`, strefa Polski z automatyczną zmianą CET/CEST.
-- **Pilot NEC** — przełączanie stacji, głośność, STOP, OK i MUTE.
-- **Monitor szeregowy 115200** — komendy do sterowania, podgląd parametrów, diagnostyka HLS i ID3.
-- **WiFiManager** — konfiguracja sieci przy pierwszym uruchomieniu.
-- **Bufor ok. 96 KiB i zadania FreeRTOS** — oddzielenie odbioru segmentów od dekodowania AAC.
+- **Odtwarzanie OpenFM przez HLS** — token dostępu, playlista MASTER, playlista MEDIA i segmenty MPEG-TS są obsługiwane przez własne moduły projektu.
+- **Dekodowanie MPEG-TS / AAC** przez `MTSDecoder` i `AACDecoderHelix` z biblioteki Arduino Audio Tools / Helix; dźwięk trafia do przetwornika PCM5102A przez I2S.
+- **Automatyczne dopasowanie parametrów I2S** do danych uzyskanych z dekodera AAC, w tym wykrytego próbkowania 44,1 lub 48 kHz.
+- **200 nazw stacji w lokalnym katalogu** — bez odpytywania serwisu GETRADIO przez ESP32 przy każdej zmianie kanału.
+- **Odczyt metadanych ID3v2** ze strumienia MPEG-TS: wykonawca (`TPE1`) i tytuł (`TIT2`).
+- **Polskie litery na ekranie TFT** — własne bitmapy znaków i dekodowanie UTF-8 w `OpenFmPolishText.h`.
+- **Przewijana lista ośmiu stacji** z podświetleniem oraz zatwierdzaniem przyciskiem OK.
+- **Bezpośredni wybór numeru stacji** z pilota: wpisanie 1–3 cyfr → OK otwiera listę → drugie OK uruchamia wybraną pozycję; między zatwierdzeniami można przewijać listę.
+- **Interfejs ILI9488** oparty na `GFXcanvas16`, przesyłaniu RGB666 przez SPI **40 MHz** i częściowym odświeżaniu zmienionych obszarów.
+- **Konfigurowalna paleta nazwanych kolorów RGB565** w przestrzeni nazw `Kolory` (49 kolorów).
+- **Zegar NTP** z dużą czcionką `DS_DIGII35pt7b` i automatyczną zmianą czasu CET/CEST.
+- **WiFiManager**, monitor Serial 115200 oraz osobne zadania FreeRTOS dla pobierania HLS i dekodowania audio.
 
-### Czego ten projekt *nie* obejmuje
+## Aktualny stan funkcji
 
-To **osobny odtwarzacz testowo-rozwojowy OpenFM**. Nie jest automatycznie pełnym firmware wcześniejszego rozbudowanego radia z kartą SD, pogodą i kalendarzem. Te elementy nie są częścią niniejszego szkicu.
-
-## Potwierdzone testy i ograniczenia
-
-| Funkcja | Stan | Uwagi |
+| Funkcja | Stan | Informacja |
 |---|---|---|
-| Pobieranie tokenu i uruchamianie HLS OpenFM | ✅ Potwierdzone | API zwraca czasowy URL odtwarzania |
-| MASTER → MEDIA → segmenty MPEG-TS | ✅ Potwierdzone | Działające odtwarzanie na ESP32-S3 |
-| AAC / stereo przez PCM5102A | ✅ Potwierdzone | Dla `OFM10` dekoder zgłasza **48 000 Hz / 2 kanały** |
-| Metadane ID3v2: `TIT2`, `TPE1` | ✅ Potwierdzone | Odczyt dwóch kolejnych utworów w logach `OFM10` |
-| PID metadanych | ✅ Potwierdzone dla testu | `0x102` w jednym z testowanych strumieni; **nie kodować na stałe** |
-| Pilot, TFT, zegar | ✅ Używane w działającym projekcie | Indywidualna konfiguracja pinów poniżej |
-| Baza 200 nazw i pozycji | 🧪 Rozwojowe | Nazwy/slug, ale nie wszystkie streamy zidentyfikowane lub zweryfikowane |
-| Automatyczne rozpoznawanie `OFMxxx` z katalogu | 🧪 Rozwojowe | Zależy od aktualnej struktury przekierowań GETRADIO |
-| Automatyczna zmiana I2S 44,1 ↔ 48 kHz | ⏳ Do zrobienia | Poprawka **48 kHz** była skuteczna dla `OFM10` |
-| Obsługa wszystkich wariantów HLS, fMP4 i szyfrowania | ❌ Nie | Implementacja celuje w nieszyfrowane segmenty TS/AAC |
+| Token OpenFM, MASTER/MEDIA i odtwarzanie MPEG-TS/AAC | ✅ Działa | Potwierdzone testami na ESP32-S3 |
+| Odczyt wykonawcy i tytułu z ID3v2 | ✅ Działa | Sprawdzone na strumieniach nadających właściwe tagi |
+| Katalog lokalny | ✅ 200 pozycji | 189 ID rozpoznanych, 11 niepotwierdzonych |
+| Przewijana lista i wybór numeru | ✅ Zaimplementowane | Akceptacja przez OK, bez zatrzymywania bieżącej stacji podczas przeglądania |
+| Polskie znaki UTF-8 | ✅ Zaimplementowane | Własne glify dla polskich liter; inne znaki Unicode mogą być ograniczone |
+| Próbkowanie I2S | ✅ Zaimplementowane | Przełączenie z 44,1 na 48 kHz potwierdzone w logach; warto dalej testować różne stacje |
+| Wyświetlanie parametrów TS, Hz, PCM, kanałów i głośności | ✅ Zaimplementowane | Wartości dostępne z dekodera i liczników strumienia |
+| Częściowe odświeżanie listy TFT | 🧪 W testach | Ogranicza liczbę przesyłanych pikseli; responsywność jest nadal obserwowana |
+| Obsługa każdego wpisu w katalogu i każdego wariantu HLS | ❌ Niepotwierdzona | Niektóre pozycje mogą prowadzić do zewnętrznych strumieni |
+| Produkcyjna weryfikacja certyfikatów TLS | ⏳ Do wykonania | W module sieciowym nadal użyto `setInsecure()` |
 
 ## Sprzęt i połączenia
 
-### Podstawowe moduły
-
-- ESP32-S3 **N16R8** (16 MB pamięci Flash, 8 MB PSRAM).
-- Wyświetlacz **ILI9488 IPS, 480 × 320** w trybie SPI.
-- Przetwornik cyfrowo-analogowy **PCM5102A** z interfejsem I2S.
-- Odbiornik podczerwieni współpracujący z pilotem NEC.
-- Zasilanie odpowiednie do użytych modułów, wspólna masa GND, wyjście audio/wzmacniacz/głośniki.
-- Sieć Wi-Fi z dostępem do Internetu.
-
-### Połączenia ESP32-S3
-
-| Funkcja | GPIO ESP32-S3 | Wejście modułu |
-|---|---:|---|
-| I2S BCLK | **16** | PCM5102A BCK/BCLK |
-| I2S DATA | **17** | PCM5102A DIN |
-| I2S LRCK / WS | **18** | PCM5102A LCK/LRCK |
-| Odbiornik IR | **15** | OUT |
-| TFT SCLK | **11** | ILI9488 SCK/CLK |
-| TFT MOSI | **12** | ILI9488 MOSI/SDI |
-| TFT MISO | **13** | ILI9488 MISO/SDO, jeśli moduł używa |
-| TFT CS | **5** | ILI9488 CS |
-| TFT DC / RS | **4** | ILI9488 DC |
-
-> **Uwaga:** to połączenia z opisywanej implementacji, nie uniwersalny pinout wszystkich płytek ESP32-S3 i modułów ILI9488. Sprawdź dopuszczalne napięcia logiki i zasilania konkretnego wyświetlacza, polaryzację odbiornika IR oraz wspólną masę. Sterowanie RESET i podświetleniem TFT zależy od użytego modułu.
-
-## Budowa i przepływ danych
-
-```text
-   Pilot IR NEC                    Monitor Serial
-        |                                |
-        +----------> główny szkic <------+
-                         |
-                  wybór pozycji 1..200
-                         |
-              OpenFmCatalog.cpp
-            nazwa + slug + OFMxxx
-                         |
-               OpenFmResolver.cpp
-            GET /api/user/token?fp=...
-                         |
-                 tymczasowy URL
-                         |
-               playlista MASTER
-                         |
-            playlista MEDIA / HLS
-                         |
-                  segmenty .ts
-                         |
-            +------------+------------+
-            |                         |
-     OpenFmPlayer.cpp         OpenFmMetadata.cpp
-     bufor / FreeRTOS          PAT -> PMT -> PID
-     MPEG-TS -> AAC           PES -> ID3v2
-     Helix -> PCM             TIT2 / TPE1
-            |                         |
-       I2S / PCM5102A         wykonawca / tytuł
-            |                         |
-       WYJŚCIE AUDIO            GFXcanvas16
-                                       |
-                           SPI 40 MHz / ILI9488
-```
-
-Strumień metadanych **nie jest dokładany do strumienia audio** ani konwertowany do `ICY StreamTitle`: ESP32-S3 rozdziela te dane lokalnie i wyświetla je na ekranie. To upraszcza naszą konstrukcję w porównaniu z rozwiązaniami wymagającymi osobnego mikrokontrolera pośredniczącego.
-
 ### Moduły
 
-| Plik | Zadanie |
+- **ESP32-S3 N16R8** — 16 MB Flash, 8 MB PSRAM.
+- **ILI9488 IPS 480 × 320** — ekran TFT z magistralą SPI.
+- **PCM5102A** — przetwornik DAC z wejściem I2S.
+- **Odbiornik podczerwieni** i pilot zgodny z protokołem NEC.
+- Zasilanie modułów, wspólna masa, wyjście analogowe do wzmacniacza/głośników oraz Wi-Fi.
+
+### GPIO
+
+| Funkcja | ESP32-S3 | Podłączenie |
+|---|---:|---|
+| TFT CS | GPIO 5 | ILI9488 CS |
+| TFT DC | GPIO 4 | ILI9488 DC / RS |
+| TFT SCK | GPIO 11 | ILI9488 SCK |
+| TFT MOSI | GPIO 12 | ILI9488 MOSI / SDI |
+| TFT MISO | GPIO 13 | ILI9488 MISO / SDO, jeśli używany |
+| Odbiornik IR | GPIO 15 | OUT odbiornika NEC |
+| I2S BCLK | GPIO 16 | PCM5102A BCK |
+| I2S DATA | GPIO 17 | PCM5102A DIN |
+| I2S LRCK / WS | GPIO 18 | PCM5102A LCK / LRCK |
+
+**Uwaga:** podłączenia dotyczą konkretnej konfiguracji projektu. Sprawdź zasilanie, napięcia sygnałów i wymagania własnego modułu TFT. Obsługa sprzętowego RESET i podświetlenia zależy od wersji płytki wyświetlacza.
+
+## Architektura odtwarzania
+
+```text
+  Pilot NEC / Serial
+         |
+  ESP32S3_OpenFM.ino  ───────────> GFXcanvas16 / ILI9488
+         |                              ^
+         v                              |
+  OpenFmCatalog.cpp             OpenFmPolishText.h
+  nazwa / slug / OFM ID                |
+         |                              |
+         v                              |
+  OpenFmResolver.cpp                    |
+  API tokenu OpenFM                     |
+         |                              |
+         v                              |
+  HLS MASTER -> MEDIA -> segmenty MPEG-TS
+                         |
+                 +-------+-------+
+                 |               |
+                 v               v
+         OpenFmPlayer.cpp   OpenFmMetadata.cpp
+         MTSDecoder         PAT / PMT / PES
+         AACDecoderHelix    ID3v2: TIT2 / TPE1
+         VolumeStream              |
+         I2SStream                 +----> wykonawca / tytuł na TFT
+                 |
+                 v
+              PCM5102A
+                 |
+                 v
+           WYJŚCIE AUDIO
+```
+
+### Pobieranie playlist i segmentów
+
+1. `OpenFmCatalog` przekazuje identyfikator stacji (np. `OFM149`).
+2. `OpenFmResolver` buduje bazowy adres playlisty i odpytuje `https://open.fm/api/user/token?fp=...`.
+3. Z odpowiedzi JSON pobierane jest pole `url` zawierające **czasowy adres** strumienia.
+4. `OpenFmPlayer` pobiera playlistę MASTER, następnie playlistę MEDIA i kolejne segmenty `.ts`.
+5. Segmenty są kierowane do kolejki dekodera oraz niezależnie do parsera ID3.
+6. Dane AAC po dekodowaniu trafiają na I2S i do PCM5102A.
+
+Projekt korzysta z własnej obsługi HLS, zamiast polegać na gotowym `HLSStream.h`. Nie przechowuje wygasających tokenów w statycznym katalogu.
+
+## Katalog 200 stacji
+
+Katalog `OpenFmCatalog.cpp` zawiera dla każdej pozycji:
+
+```cpp
+{"Trap PL", "trap-pl", 149},
+{"Impreza PL", "impreza-pl", 154},
+```
+
+Kolejne pola to **nazwa na ekranie**, **slug katalogowy** i **liczbowy identyfikator OFM**. Numer pozycji na ekranie (`001–200`) nie jest numerem `OFMxxx`.
+
+### Skąd pochodzą identyfikatory?
+
+Nazwy i slugi zebrano z katalogu [GETRADIO — OpenFM](https://getradio.reconv.pl/openfm). Pierwotnie ESP32 miało odczytywać identyfikatory z przekierowań, jednak serwis odpowiadał urządzeniu błędem **HTTP 403** związanym z ochroną Cloudflare.
+
+Dlatego przygotowano skrypt **PowerShell dla Windows**, który wykorzystywał przeglądarkę Chrome lub Edge do otwierania adresów z odpowiednimi slugami, np.:
+
+```text
+https://getradio.reconv.pl/openfm?s=trap-pl
+```
+
+Z przekierowania do adresu zawierającego `/OFM149/` pobierany był wyłącznie identyfikator — **bez zapisywania czasowego tokenu**. Wyniki trafiały do `openfm_stations.csv`, a następnie do statycznej tablicy C++.
+
+**Stan na 12 listopada 2026 r.:** 200 pozycji katalogowych, **189 rozpoznanych identyfikatorów** i **11 pozycji z `fixedId = 0`**. Najnowszym potwierdzonym wpisem jest `Impreza PL -> OFM154`. Niektóre stacje z katalogu są radiami zewnętrznymi (np. mogą przekierowywać do MP3), a nie kanałami `OFMxxx` obsługiwanymi przez ten odtwarzacz. Wpis `fixedId = 0` nie oznacza automatycznie, że dana stacja przestała nadawać.
+
+W aktualnym odtwarzaczu **ESP32 nie wysyła zapytań do GETRADIO przy zmianie stacji**. Funkcja `resolveId()` odczytuje przypisanie z lokalnej tablicy.
+
+## Interfejs TFT i polskie znaki
+
+Wyświetlacz **ILI9488 480 × 320** działa z buforem `GFXcanvas16` (RGB565). Program przelicza piksele na RGB666 i przesyła je przez SPI ustawione na **40 MHz**:
+
+```cpp
+spi.beginTransaction(SPISettings(40000000, MSBFIRST, SPI_MODE0));
+```
+
+### Ekran główny
+
+- Nagłówek **„Open FM stacja 001/200”**.
+- Nazwa stacji dużą czcionką, o skali odpowiadającej nagłówkowi.
+- **Wykonawca** i **Tytuł**: etykieta w wyróżnionym kolorze, tekst od razu po dwukropku i spacji; w razie potrzeby zawijany do drugiej linii.
+- Stan odtwarzania.
+- `TS`, `Hz` i `PCM` w jednym wierszu.
+- Liczba segmentów, bajty ostatniego kompletnego segmentu, liczba kanałów i głośność w dolnym lewym obszarze.
+- Zegar **HH:MM:SS** w prawym dolnym obszarze, z zachowaną czcionką `DS_DIGII35pt7b`.
+
+**Znaczenie wartości:** `TS` to oszacowana przepływność *kontenera MPEG-TS*, nie gwarantowany bitrate samego AAC. `PCM 16 bit` oznacza format sygnału **po dekodowaniu**, a nie rozdzielczość źródłowego skompresowanego pliku.
+
+### Polska czcionka UTF-8
+
+Własny moduł `OpenFmPolishText.h` obsługuje:
+
+```text
+Ą Ć Ę Ł Ń Ó Ś Ź Ż
+ą ć ę ł ń ó ś ź ż
+```
+
+Zwykłe litery pozostają rysowane przez Adafruit GFX. Dodatkowe bitmapy i dekoder UTF-8 pozwalają wyświetlać polskie litery w nazwie stacji, wykonawcy i tytule. Ograniczanie długości napisów uwzględnia szerokość w pikselach; obsługa całego Unicode nie jest celem tego modułu. Czcionka zegara jest niezależna.
+
+### Menu i odświeżanie
+
+- Lista pokazuje **8 stacji** na ekranie.
+- Zaznaczenie ma własne tło i kolor tekstu; numer oraz nazwa są rysowane w spójnych barwach, również przy polskich literach.
+- Przy typowym przesunięciu zaznaczenia aktualizowane są tylko zmienione wiersze i mały fragment nagłówka.
+- Gdy zmienia się zakres ośmiu widocznych pozycji, odświeżany jest odpowiedni obszar listy, bez niepotrzebnego rysowania całego ekranu w każdym kroku.
+- Bieżące odtwarzanie **nie jest przerywane podczas samego przeglądania**; strumień zmienia się dopiero po zatwierdzeniu.
+
+Prace nad responsywnością menu nadal są testowane. W szczególności opóźnienie aktualizacji głośności na TFT może różnić się od chwili faktycznej zmiany poziomu audio.
+
+### Nazwane kolory RGB565
+
+Kolory są zebrane na początku głównego szkicu w przestrzeni nazw `Kolory`. Przykład:
+
+```cpp
+canvas.setTextColor(Kolory::CYJAN);
+canvas.setTextColor(Kolory::ZLOTY);
+canvas.fillRect(0, 0, WIDTH, HEIGHT, Kolory::CZARNY);
+```
+
+W palecie znajduje się **49 nazwanych kolorów**. Zmiana wartości przypisanej nazwie modyfikuje wszystkie miejsca używające danego koloru. Nie należy mylić stałych RGB565 z szesnastkowymi kodami rozkazów wyświetlacza lub pilota.
+
+## Sterowanie pilotem NEC
+
+Pilot jest dekodowany bezpośrednio z przerwań GPIO 15, bez obowiązkowej zewnętrznej biblioteki IR.
+
+| Przycisk / kod NEC | Działanie |
 |---|---|
-| `ESP32S3_OpenFM_200_Stacji_ID3.ino` | `setup()/loop()`, Wi-Fi, pilot, obsługa komend, ekran, zegar, wybór stacji |
-| `OpenFmCatalog.h/.cpp` | Tablica 200 nazw/slugów, znane identyfikatory i rozpoznawanie `OFMxxx` z przekierowania |
-| `OpenFmResolver.h/.cpp` | Pobranie aktualnego URL z tokenem OpenFM i rozpoznanie odpowiedzi JSON |
-| `OpenFmPlayer.h/.cpp` | Playlista MASTER/MEDIA, transfer segmentów, bufor, dekoder AAC, I2S, statystyki i STOP |
-| `OpenFmMetadata.h/.cpp` | Wydzielenie PID metadanych, składanie PES/ID3, odczyt tytułu/wykonawcy i diagnostyka |
-| `README.md` | Dokumentacja repozytorium |
-| `LICENSE` | Pełny tekst licencji kodu projektu, jeśli umieszczony w repozytorium |
+| Prawo `0x26` | Natychmiast następna stacja |
+| Lewo `0x27` | Natychmiast poprzednia stacja |
+| Dół `0x22` | Otwórz listę / przesuwaj zaznaczenie w dół |
+| Góra `0x30` | Otwórz listę / przesuwaj zaznaczenie w górę |
+| OK `0x25` | Wpisany numer → lista; lista → odtwarzanie; poza nimi ponowny start |
+| STOP `0x33` | Anuluj wpisywanie / zamknij listę; poza nimi zatrzymaj audio |
+| VOL+ `0x28` | Zwiększ głośność |
+| VOL− `0x24` | Zmniejsz głośność |
+| MUTE `0x29` | Włącz / wyłącz wyciszenie |
+| FF+ `0x18`, FF− `0x19` | Następna / poprzednia stacja |
 
-## Jak działa OpenFM HLS
+### Wybór numeryczny — dwa zatwierdzenia OK
 
-### 1. Token i playlisty
+1. Na pilocie wpisz numer pozycji, np. **125** — maksymalnie trzy cyfry.
+2. **Pierwsze OK** otwiera przewijaną listę z podświetloną pozycją 125, nie przerywając aktualnej muzyki.
+3. Opcjonalnie użyj **góra/dół**, aby skorygować wybór.
+4. **Drugie OK** przełącza radio na zaznaczoną stację.
 
-Dla identyfikatora, np. `OFM10`, podstawowy adres ma postać:
+Aktualnie używane kody NEC cyfr w szkicu:
+
+| Cyfra | Kod | Cyfra | Kod |
+|---:|---|---:|---|
+| 0 | `0x12` | 5 | `0x10` |
+| 1 | `0x15` | 6 | `0x09` |
+| 2 | `0x14` | 7 | `0x07` |
+| 3 | `0x08` | 8 | `0x06` |
+| 4 | `0x11` | 9 | `0x05` |
+
+Kody dotyczą konkretnego pilota. Przy innym nadajniku trzeba zaktualizować mapowanie w `handleRemote()`.
+
+## Polecenia monitora Serial
+
+Prędkość: **115200 baud**.
+
+| Polecenie | Znaczenie |
+|---|---|
+| `g 1` … `g 200` | Wybór pozycji katalogu |
+| `1` … `9` | Szybki wybór pierwszych dziewięciu pozycji |
+| `n` / `p` | Następna / poprzednia stacja |
+| `o OFM10` | Uruchomienie kanału po bezpośrednim identyfikatorze OFM |
+| `s` | STOP |
+| `r` | Uruchom ponownie |
+| `+` / `-` | Głośniej / ciszej (`0..21`) |
+| `m` | Statystyki i diagnostyka |
+| `meta Artysta\|Tytuł` | Ręczny test metadanych na ekranie (bez pobierania ich z OpenFM) |
+| `h` | Pomoc |
+
+## Próbkowanie 44100 i 48000 Hz
+
+Pierwotnie wyjście I2S startowało z ustawieniem **44 100 Hz**, podczas gdy badany strumień AAC korzystał z **48 000 Hz**. Powodowało to zbyt wolną muzykę i obniżenie wysokości dźwięku.
+
+Obecny moduł `OpenFmPlayer.cpp`:
+
+1. inicjalizuje I2S z formatem startowym;
+2. odczytuje aktualne `AudioInfo` z dekodera `AACDecoderHelix`;
+3. sprawdza częstotliwość, liczbę kanałów i rozdzielczość PCM;
+4. przy wykryciu zmiany przekazuje nowe ustawienia do `VolumeStream` / `I2SStream`;
+5. rejestruje zmianę w logu, np.:
 
 ```text
-https://stream-cdn-1.open.fm/OFM10/ngrp:standard/playlist.m3u8
+[AAC] / [Helix] sample_rate: 48000 / channels: 2
+[I2S] Automatyczna zmiana formatu: 44100 -> 48000 Hz, 2 kan., 16 bit
 ```
 
-Aplikacja pobiera czasowy URL z API:
+Działa również mechanizm propagacji informacji o formacie z dekodera (`decoded.addNotifyAudioChange(volumeOutput)`). **Przejście do 48 kHz zostało potwierdzone na rzeczywistym urządzeniu**. Dalsze testy różnych stacji, w tym powrotu do 44,1 kHz, nadal są wskazane.
 
-```text
-https://open.fm/api/user/token?fp=https://stream-cdn-1.open.fm/OFM10/ngrp:standard/playlist.m3u8
-```
+## Metadane ID3v2
 
-Odpowiedź JSON zawiera pole `url`. Jest to **adres tymczasowy**, którego nie należy na stałe wpisywać w kod ani publikować wraz z tokenem w logach. Szczegóły działania endpointu mogą zostać zmienione przez operatora OpenFM.
+`OpenFmMetadata.cpp` analizuje niezależnie od audio pakiety **MPEG-TS** o długości 188 bajtów:
 
-### 2. MASTER i MEDIA
+1. odnajduje tablicę **PAT**;
+2. ustala PID tablicy **PMT**;
+3. wyszukuje strumień metadanych o `stream_type = 0x15`;
+4. składa dane **PES**;
+5. odnajduje sygnaturę **ID3**;
+6. odczytuje ramki `TPE1` (wykonawca) oraz `TIT2` (tytuł).
 
-Po uzyskaniu URL aplikacja:
+Parser obsługuje występujące w ID3 kodowania tekstu, w tym ISO-8859-1, UTF-8 i UTF-16. Informacje są bezpiecznie przekazywane do głównej pętli wyświetlacza.
 
-1. pobiera playlistę **MASTER** (`#EXT-X-STREAM-INF`);
-2. wybiera wskazaną w niej playlistę **MEDIA**;
-3. regularnie odświeża MEDIA, aby odczytać kolejne segmenty;
-4. pobiera nowe segmenty **MPEG-TS**, unikając ponownego odtwarzania już obsłużonych numerów sekwencji;
-5. przekazuje strumień do bufora odtwarzania oraz analizatora metadanych.
-
-Przy implementacji okazało się istotne prawidłowe odbieranie playlist po HTTP i obsługa odpowiedzi `chunked`. Wcześniejsza próba użycia gotowego parsera `HLSStream` nie radziła sobie z playlistą OpenFM; dlatego zarządzanie HLS jest tutaj realizowane bezpośrednio w kodzie projektu.
-
-### 3. Dekodowanie i równoległa praca
-
-Dane z kontenera MPEG-TS trafiają do dekodera **AAC Helix** udostępnionego przez Arduino Audio Tools. Oddzielne zadania FreeRTOS i bufor około **96 KiB** zmniejszają ryzyko przerw w dźwięku podczas pobierania segmentów HTTPS i odświeżania TFT.
-
-W kodzie ograniczono czas oczekiwania przy operacjach bufora — pozwala to zatrzymywać i przełączać stacje bez niekończącego się oczekiwania przy pełnym buforze. Nie oznacza to jednak, że każdy błąd sieciowy zakończy się natychmiast.
-
-## Metadane ID3v2 — wykonawca i tytuł
-
-To jedno z najważniejszych usprawnień projektu. W odróżnieniu od starszego README, **automatyczny odczyt wykonawcy i tytułu jest już zaimplementowany i potwierdzony w praktyce**.
-
-### Skąd pochodzą metadane?
-
-W jednym z testów na stacji `OFM10` log wskazał:
+Przykładowe logi z testów:
 
 ```text
 [ID3] PAT: PMT PID=0xFFF
 [ID3] PMT: metadata PID=0x102 (stream_type=0x15)
-[ID3] PES stream_id=0xBD header=14 payload=164 pierwsze: 49 44 33 04 ...
 [ID3] Sygnatura ID3 wykryta (nr=1)
-[ID3] Nowe metadane: wykonawca=Inna | tytul=Que Dolor
-[ID3] Nowe metadane: wykonawca=Layton Giordani & AR/CO | tytul=She's A Devil
-[ID3] TS=3531 PMT=0xFFF PID=0x102 pakiety_meta=2 PES=2 PES_bad=0 bajty_PES=265 ID3_headers=2 tagi=2
+[ID3] Nowe metadane: wykonawca=twocolors | tytul=Mad World
+[ID3] TS=3530 PMT=0xFFF PID=0x102 pakiety_meta=1 PES=1 PES_bad=0 bajty_PES=83 ID3_headers=1 tagi=1
 ```
 
-Widać tu **dwa poprawnie rozpoznane tagi ID3 i zero błędów PES** w pokazanym wycinku logu. Nie oznacza to jeszcze, że identyczne metadane będą nadawane przez każdą stację z katalogu.
+> PID `0x102` jest przykładem z konkretnego strumienia, nie stałą dla wszystkich kanałów. Komunikat dekodera `Packet ignored for PID 0x102` może być normalny: dekoder dźwięku pomija pakiety metadanych, które osobno obsługuje `OpenFmMetadata`.
 
-### Jak odczytujemy ID3?
+Nazwy stacji **nie są pobierane z ID3**. Pochodzą z lokalnego katalogu. To, że nie odczytujemy nazwy stacji z tagów ID3, nie dowodzi, że serwis nie udostępnia jej inną drogą.
 
-1. Analiza 188-bajtowych pakietów **MPEG-TS**.
-2. Odczyt tablicy **PAT**, aby znaleźć PID tablicy **PMT**.
-3. Odczyt PMT i wyszukanie strumienia metadanych oznaczonego `stream_type = 0x15`.
-4. Składanie pakietów **PES** z odpowiedniego PID (nie zakładamy na stałe `0x102`).
-5. Odnalezienie sygnatury **`ID3`** w ładunku PES, również gdy nie zaczyna się ona w jego pierwszym bajcie.
-6. Odczyt ramek tekstowych ID3v2, w tym **`TIT2`** (tytuł) i **`TPE1`** (wykonawca), z obsługą typowych kodowań znaków.
-7. Przekazanie zmian do ekranu bez niepotrzebnego pełnego odświeżania.
-
-Inne pola ID3v2, np. `TALB` (album), `TCON` (gatunek), `TXXX` (dane dodatkowe), są możliwymi kierunkami rozbudowy. **Nie należy zakładać, że OpenFM je nadaje**, dopóki nie zostanie to potwierdzone logami.
-
-### Komunikat „Packet ignored for PID 0x102”
+## Pliki projektu
 
 ```text
-[W] CodecMTS.h : 308 - -> Packet ignored for PID 0x102
-```
-
-Ten komunikat może być normalny: **dekoder audio** ignoruje PID z metadanymi, podczas gdy **osobny parser ID3** go analizuje. Jeśli dźwięk działa i pojawiają się wpisy `[ID3] Nowe metadane`, samo ostrzeżenie nie oznacza awarii.
-
-## Katalog 200 stacji
-
-Tablica `OpenFmCatalog.cpp` zawiera **200 pozycji z nazwami i slugami** z katalogu [GETRADIO — OpenFM](https://getradio.reconv.pl/openfm). Nie są to numery od 1 do 200 przypisane wprost do `OFM1..OFM200`.
-
-- Każda pozycja ma **numer 001–200** używany przez ekran/pilota.
-- Każda pozycja ma **nazwę** i **slug** (np. `90s-dance`).
-- Wybrane pozycje mają znany `OFMxxx` zapisany w tabeli; dla pozostałych program próbuje odczytać go z odpowiedzi przekierowania HTTPS.
-- Odkryty numer jest **zapamiętywany w pamięci RAM na czas bieżącego uruchomienia**, a nie trwale w NVS.
-- Katalog może zawierać pozycje partnerskie lub przekierowania nieobsługiwane przez tę wersję odtwarzacza — w takim przypadku nie jest uruchamiany przypadkowy `OFMxxx`.
-
-Przykładowe wpisy w kodzie:
-
-| Nazwa | Slug katalogowy | Znane ID w tabeli |
-|---|---|---|
-| 90s Dance | `90s-dance` | `OFM168` |
-| Impreza | `impreza` | `OFM57` |
-| Trap PL | `trap-pl` | Wyszukiwane przy wyborze |
-| Weekend Chill | `weekend-chill` | Wyszukiwane przy wyborze |
-
-**To baza 200 pozycji, a nie deklaracja 200 przetestowanych źródeł dźwięku.** Działanie mechanizmu automatycznych przekierowań należy sprawdzać na rzeczywistym urządzeniu — serwis może zmienić format odpowiedzi lub mapowanie kanałów. Zwróć uwagę, że początkowa pozycja w tej wersji katalogu to **90s Dance**, a nie `OFM10` znany z wcześniejszego testu. Do porównania z poprzednimi logami użyj komendy `o OFM10`.
-
-## Wyświetlacz i zegar
-
-Ekran ILI9488 pracuje w rozdzielczości **480 × 320**. Program rysuje do bufora `GFXcanvas16` (RGB565), a następnie wysyła dane do sterownika LCD jako **RGB666**.
-
-**Kluczowe elementy wydajności:**
-
-- `SPISettings(40000000, MSBFIRST, SPI_MODE0)` — **40 MHz**.
-- Wysyłanie tylko zmodyfikowanych prostokątów (`pushCanvasRegion`) zamiast każdorazowego transferu całego obrazu.
-- Osobne odświeżanie nagłówka z nazwą stacji, panelu audio/metadanych i zegara.
-- Uaktualnianie zegara po zmianie sekundy, z czcionką **`DS_DIGII35pt7b`** i stałym położeniem na ekranie.
-- Czas pobierany przez NTP (`configTzTime`) ze strefą `CET-1CEST,M3.5.0,M10.5.0/3`, która uwzględnia polski czas letni i zimowy.
-
-Na ekranie znajdują się m.in.:
-
-```text
-KANAL 001/200
-90s Dance
-Wykonawca: [dane ID3 albo --]
-Tytul:     [dane ID3 albo --]
-Stan: ODTWARZANIE
-VOL: 14/21
-
-TS: ... kb/s | ... Hz | PCM 16 bit
-Segmenty: ...  | Bajty seg.: ...
-Kanały: 2                        HH:MM:SS
-```
-
-Jest to **schemat informacyjny**, nie identyczny zrzut ekranu. Odczyty metadanych zależą od nadawanej stacji; nie przypisuj przykładowych tytułów do konkretnego kanału.
-
-### Kolory tekstu
-
-Kolory `GFXcanvas16` są podawane w **RGB565**:
-
-```cpp
-canvas.setTextColor(0xFFFF); // bialy
-canvas.setTextColor(0xFD20); // pomaranczowy
-canvas.setTextColor(0x07E0); // zielony
-canvas.setTextColor(0xFFE0); // zolty
-canvas.setTextColor(0x07FF); // cyjan
-```
-
-Zmiana koloru tekstu **nie wpływa** na dekoder AAC, bufor HLS ani częstotliwość I2S.
-
-## Ważne: prawidłowe tempo audio i I2S
-
-Podczas testów zauważono, że muzyka na ESP32-S3 brzmi **wolniej i niżej niż w przeglądarce**. Przyczyną była rozbieżność częstotliwości:
-
-- Dekoder AAC zgłaszał dla testowanego `OFM10`: **48 000 Hz**.
-- Wyjście I2S w poprzednim kodzie było inicjalizowane na **44 100 Hz**.
-- Odtwarzanie próbek 48 kHz zegarem 44,1 kHz daje około **8,1% niższe tempo** i obniżoną wysokość dźwięku.
-
-**Poprawka potwierdzona przez użytkownika:** w pliku `OpenFmPlayer.cpp`, w konfiguracji `audioI2S`, zmiana:
-
-```cpp
-cfg.sample_rate=44100;
-```
-
-na:
-
-```cpp
-cfg.sample_rate=48000;
-```
-
-przywróciła prawidłowe tempo muzyki na testowanym kanale.
-
-> **Istotne dla repozytorium:** archiwum `ESP32S3_OpenFM_200_Stacji_ID3_WiFi_FIX.zip` utworzone przed tym testem **nadal zawierało `cfg.sample_rate=44100`**. Jeśli publikujesz tamtą paczkę, koniecznie nanieś i zapisz poprawkę `48000` także w kodzie na GitHubie. Ten README opisuje stan po ręcznej poprawce, którą potwierdzono na urządzeniu.
-
-**Docelowe rozwiązanie:** odczytywać częstotliwość rzeczywistego strumienia AAC i **rekonfigurować I2S automatycznie**. Nie wszystkie stacje muszą nadawać 48 kHz. Stałe `48000` jest udanym rozwiązaniem dla testowanego strumienia, a nie uniwersalną gwarancją dla całego katalogu.
-
-**Nie myl dwóch objawów:**
-
-- muzyka wolniejsza / niższy ton → sprawdź **sample rate / zegar I2S**;
-- muzyka we właściwym tempie, ale kilka sekund później niż w przeglądarce → zwykle **opóźnienie HLS i buforowanie**.
-
-## Środowisko i biblioteki
-
-Projekt rozwijano w **Arduino IDE** z pakietem **Espressif ESP32 3.3.12**. Użyte środowisko autora to **ESP32-S3 N16R8**. Wymagane biblioteki i komponenty:
-
-| Biblioteka / komponent | Wykorzystanie |
-|---|---|
-| [Arduino Audio Tools](https://github.com/pschatzmann/arduino-audio-tools) / wariant DevLab | I2S, dekoder MPEG-TS, obiekty audio, buforowanie |
-| [arduino-libhelix](https://github.com/pschatzmann/arduino-libhelix) | Dekoder AAC Helix |
-| [ArduinoJson](https://github.com/bblanchon/ArduinoJson) | Odczyt JSON z API tokenu |
-| [WiFiManager](https://github.com/tzapu/WiFiManager) | Konfiguracja dostępu Wi-Fi |
-| [Adafruit GFX Library](https://github.com/adafruit/Adafruit-GFX-Library) | `GFXcanvas16` i rysowanie tekstu |
-| [Arduino core for ESP32](https://github.com/espressif/arduino-esp32) | `WiFi.h`, `HTTPClient.h`, `WiFiClientSecure.h`, `SPI.h`, NTP, FreeRTOS |
-| `DS_DIGII35pt7b.h` | Niestandardowa czcionka zegara; musi być dostępna w środowisku kompilacji |
-
-Odbiornik pilota NEC jest w tej wersji obsługiwany **bezpośrednio z użyciem przerwań** i nie wymaga osobnej biblioteki IR.
-
-> Nazwy nagłówków i API mogą różnić się pomiędzy wersjami/forkami Audio Tools i Helix. Użyj kompatybilnych wersji instalowanych do dotychczasowego działającego projektu. Samo dołączenie `WiFi.h` jest potrzebne również w pliku `OpenFmCatalog.cpp`, nie tylko w głównym `.ino`.
-
-## Struktura projektu
-
-```text
-ESP32S3_OpenFM_200_Stacji_ID3/
-├── ESP32S3_OpenFM_200_Stacji_ID3.ino
+ESP32S3_OpenFM/
+├── ESP32S3_OpenFM.ino       # Program główny, TFT, pilot, menu, Wi-Fi, NTP
 ├── OpenFmCatalog.h
-├── OpenFmCatalog.cpp
+├── OpenFmCatalog.cpp       # Statyczna tablica 200 pozycji i identyfikatorów
 ├── OpenFmResolver.h
-├── OpenFmResolver.cpp
+├── OpenFmResolver.cpp      # Token OpenFM i aktualny adres HLS
 ├── OpenFmPlayer.h
-├── OpenFmPlayer.cpp
+├── OpenFmPlayer.cpp        # Pobieranie HLS, dekodowanie AAC, I2S, FreeRTOS
 ├── OpenFmMetadata.h
-├── OpenFmMetadata.cpp
+├── OpenFmMetadata.cpp      # PAT, PMT, PES, ID3v2
+├── OpenFmPolishText.h     # Polskie glify i obsługa UTF-8
+├── DS_DIGII35pt7b.h       # Czcionka zegara
+├── Pictures/
+│   └── 20261111_134905.jpg
 ├── README.md
-└── LICENSE                # jeśli umieszczony w repozytorium
+└── LICENSE                 # Jeśli dołączony w repozytorium
 ```
 
-**Wszystkie zgodne wersje `.ino`, `.h` i `.cpp` muszą znajdować się w tym samym katalogu szkicu.** Nie mieszaj plików z projektu 150 stacji i projektu 200 stacji. W przeciwnym razie mogą wystąpić błędy linkera `undefined reference to OpenFmPlayer::...` lub konflikty interfejsów.
+Nazwa głównego pliku `.ino` **musi odpowiadać nazwie folderu szkicu**. Pracuj na spójnym komplecie `.ino`, `.cpp`, `.h` i nie łącz przypadkowo plików z różnych etapów rozwoju radia.
 
-## Instalacja i uruchomienie
+## Biblioteki i środowisko
 
-1. Zainstaluj **Arduino IDE** i obsługę płytek **ESP32**.
-2. Wybierz moduł/ustawienia ESP32-S3 zgodne z **N16R8**, włącz obsługę PSRAM zgodnie z posiadanym modułem.
-3. Zainstaluj wymienione biblioteki audio, JSON, WiFiManager i Adafruit GFX; udostępnij czcionkę `DS_DIGII35pt7b.h`.
-4. Skopiuj **cały katalog projektu** wraz z `.ino`, `.h` i `.cpp` do lokalnego folderu.
-5. Otwórz `ESP32S3_OpenFM_200_Stacji_ID3.ino` w Arduino IDE.
-6. **Sprawdź, czy `OpenFmPlayer.cpp` zawiera prawidłowe `cfg.sample_rate=48000` dla przetestowanego `OFM10`.** Docelowe przełączanie dynamiczne jest jeszcze w planach.
-7. Sprawdź, czy `OpenFmCatalog.cpp` zawiera `#include <WiFi.h>`.
-8. Wgraj program do ESP32-S3 i otwórz **Serial Monitor: 115200 bodów**.
-9. Jeżeli Wi-Fi nie jest skonfigurowane, połącz się z portalem **`ESP32S3-OpenFM-TEST`** i podaj dane swojej sieci.
-10. Po połączeniu radio automatycznie wybiera **pozycję 1 katalogu 200 stacji**. Do sprawdzonego kanału testowego przejdź poleceniem `o OFM10`.
+Do testów używano **Arduino IDE** i pakietu **Espressif Arduino-ESP32 Core 3.3.12**.
 
-## Sterowanie pilotem i przez Serial
+| Biblioteka / komponent | Rola | Źródło |
+|---|---|---|
+| Arduino-ESP32 Core **3.3.12** | ESP32-S3, Wi-Fi, SPI, I2S, HTTPS, FreeRTOS | [Espressif](https://github.com/espressif/arduino-esp32) |
+| Arduino Audio Tools / używany wariant DevLab | Strumienie, I2S, `MTSDecoder`, `VolumeStream`, bufor RTOS | [Arduino Audio Tools](https://github.com/pschatzmann/arduino-audio-tools), [DevLab fork](https://github.com/UNIT-Electronics-MX/unit_devlab_fork_arduino_audio_tools) |
+| arduino-libhelix | Dekodowanie AAC | [Helix](https://github.com/pschatzmann/arduino-libhelix) |
+| ArduinoJson | Odpowiedź JSON API tokenu | [ArduinoJson](https://github.com/bblanchon/ArduinoJson) |
+| WiFiManager | Portal konfiguracji Wi-Fi | [WiFiManager](https://github.com/tzapu/WiFiManager) |
+| Adafruit GFX | `GFXcanvas16`, rysowanie tekstu | [Adafruit GFX](https://github.com/adafruit/Adafruit-GFX-Library) |
+| `OpenFmPolishText.h`, `DS_DIGII35pt7b.h` | Lokalna obsługa czcionek | Pliki dołączone do projektu |
 
-### Pilot NEC — użyte kody komend
+**Wersje pozostałych bibliotek** należy sprawdzić w instalacji, na której wykonano udaną kompilację. Nie podano tu niezweryfikowanych numerów wersji. W szczególności biblioteki Audio Tools i Helix powinny odpowiadać kompatybilnemu zestawowi użytemu w działającym firmware.
 
-| Kod NEC (`command`) | Działanie |
+## Instalacja
+
+1. Zainstaluj Arduino IDE oraz pakiet płytek ESP32, korzystając z konfiguracji zgodnej z ESP32-S3 N16R8.
+2. Włącz PSRAM zgodnie z modułem i ustawieniami płyty.
+3. Zainstaluj odpowiednie biblioteki z tabeli powyżej.
+4. Umieść **wszystkie pliki źródłowe** w jednym folderze `ESP32S3_OpenFM`, włącznie z `OpenFmPolishText.h` i `DS_DIGII35pt7b.h`.
+5. Otwórz **`ESP32S3_OpenFM.ino`**, skompiluj i wgraj program.
+6. Otwórz monitor Serial z prędkością **115200**.
+7. Przy pierwszym uruchomieniu skonfiguruj Wi-Fi w portalu WiFiManager (`ESP32S3-OpenFM-TEST`, jeśli nazwa nie została zmieniona w szkicu).
+8. Po połączeniu radio rozpoczyna odtwarzanie pierwszej pozycji katalogu. Stacje wybieraj pilotem lub poleceniami Serial.
+
+Nie kopiuj zawartości nowego `.ino` na koniec poprzedniego: zastąp **cały plik**. Dwie definicje `setup()` / `loop()` lub dołączenie nagłówka w środku funkcji prowadzą do błędów kompilacji.
+
+## Diagnostyka i znane ograniczenia
+
+| Objaw / komunikat | Co sprawdzić |
 |---|---|
-| `0x26` — prawo | Następna pozycja |
-| `0x22` — dół | Następna pozycja |
-| `0x27` — lewo | Poprzednia pozycja |
-| `0x30` — góra | Poprzednia pozycja |
-| `0x28` | Głośniej |
-| `0x24` | Ciszej |
-| `0x33` | STOP |
-| `0x25` | OK — ponowne uruchomienie wybranej stacji |
-| `0x29` | MUTE / wyłączenie wyciszenia |
-| `0x18` | Następna pozycja (FF+) |
-| `0x19` | Poprzednia pozycja (FF−) |
+| `Packet ignored for PID 0x102` | Może dotyczyć PID metadanych, które dekoder audio celowo pomija. Sprawdź, czy ID3 i audio działają. |
+| `Sync byte not found` | Ostrzeżenie dekodera MPEG-TS; pojedynczy wpis nie musi oznaczać problemu. Przy częstych zakłóceniach sprawdź spójność segmentów. |
+| Muzyka za wolna / za niska | Porównaj częstotliwość AAC z I2S; szukaj komunikatu automatycznej zmiany formatu. |
+| Pauza w dźwięku podczas przewijania | Sprawdź, czy aktywna jest zoptymalizowana wersja częściowego odświeżania listy TFT. |
+| Zmiana głośności pojawia się później na TFT | Dźwięk może reagować szybciej niż okresowe odświeżanie panelu parametrów. |
+| Brak wykonawcy/tytułu | Nie każdy kanał nadaje tagi ID3; po starcie pierwsza aktualizacja może pojawić się z opóźnieniem. |
+| `fixedId=0` | Dla tej pozycji brak potwierdzonego identyfikatora OFM. Nie przypisuj przypadkowego numeru. |
+| `HTTP 403` z GETRADIO | Lokalny katalog nie wymaga GETRADIO przy odtwarzaniu; identyfikatory zbierano wcześniej skryptem komputerowym. |
+| `undefined reference to setup()` / `loop()` | Sprawdź nazwę katalogu `.ino`, obecność kompletnego szkicu i brak jego przypadkowego sklejenia. |
+| Brak polskich znaków | Sprawdź obecność `OpenFmPolishText.h` i czy napisy trafiają do funkcji obsługującej UTF-8. |
+| Zegar nie aktualizuje się | Sprawdź Wi-Fi, NTP i strefę czasu Polski. |
 
-Jeżeli używasz innego pilota NEC, zmień kody w funkcji `handleRemote()` szkicu `.ino`.
+### Ograniczenia implementacji HLS
 
-### Monitor portu szeregowego
+- Odtwarzacz jest przeznaczony przede wszystkim dla **nieszyfrowanych segmentów MPEG-TS z AAC**.
+- Aktualna ścieżka pobierania segmentów wymaga znanego `Content-Length` i nie obsługuje wprost wszystkich transferów `chunked`.
+- HLS z `EXT-X-KEY`, fMP4 (`EXT-X-MAP`), DRM lub innymi kodekami wymaga odrębnej implementacji.
+- Bufor odtwarzania wynosi około **96 KiB**; połączenia HTTPS i odświeżanie ekranu mogą wpływać na płynność w trudnych warunkach sieciowych.
+- Nie wszystkie z 200 pozycji są źródłami OpenFM HLS; istnieją wpisy kierujące do niezależnych rozgłośni.
 
-| Polecenie | Działanie |
-|---|---|
-| `g 1` do `g 200` | Wybór wskazanej pozycji z katalogu |
-| `1` do `9` | Szybki wybór jednej z pierwszych dziewięciu pozycji |
-| `n` / `p` | Następna / poprzednia stacja |
-| `o OFM10` | Uruchom kanał pod znanym ID, bez konieczności znajdowania go w katalogu |
-| `s` | STOP |
-| `r` | Uruchom ponownie wybraną stację |
-| `+` / `-` | Zmień głośność, zakres `0..21` |
-| `m` | Stan audio i diagnostyka metadanych, pamięci RAM/PSRAM |
-| `meta Artysta\|Tytul` | **Tylko test ekranu** — ręczne wpisanie informacji, nie pobiera nic z OpenFM |
-| `h` | Pomoc |
+## Bezpieczeństwo i licencja
 
-## Diagnostyka i typowe problemy
+- **TLS:** obecny kod używa w wybranych miejscach `WiFiClientSecure::setInsecure()`, co wyłącza weryfikację certyfikatu serwera. Przed zastosowaniem produkcyjnym należy wdrożyć poprawną weryfikację TLS.
+- **Tokeny:** nigdy nie publikuj aktywnych adresów HLS z tokenami, danych Wi-Fi ani innych sekretów w repozytorium i logach.
+- **Nieoficjalne API:** mechanizm pobierania tokenów, działanie CDN i katalog stacji mogą ulec zmianie bez zapowiedzi.
+- **Prawa do zasobów:** przed publikacją sprawdź warunki korzystania z OpenFM oraz pochodzenie i licencje dołączonych czcionek i zależności.
+- **GPL-3.0-only:** kod własny repozytorium jest publikowany na zasadach tej licencji, o ile autor posiada do niego odpowiednie prawa. Pełną treść należy udostępnić w pliku [`LICENSE`](LICENSE). Biblioteki zewnętrzne zachowują własne licencje.
+- Projekt udostępniany jest **bez gwarancji**, w zakresie dozwolonym przez obowiązujące prawo.
 
-### 1. Błąd kompilacji: `WiFi` / `WL_CONNECTED` nieznane
+## Dalszy rozwój
 
-Jeśli kompilator pokazuje:
-
-```text
-OpenFmCatalog.cpp: error: 'WiFi' was not declared in this scope
-OpenFmCatalog.cpp: error: 'WL_CONNECTED' was not declared in this scope
-```
-
-na początku `OpenFmCatalog.cpp` dopisz:
-
-```cpp
-#include <WiFi.h>
-```
-
-W paczce oznaczonej `WiFi_FIX` poprawka była już uwzględniona.
-
-### 2. Błąd linkera: `undefined reference to OpenFmPlayer::...`
-
-Najczęściej `OpenFmPlayer.cpp` nie znajduje się w kompilowanym katalogu szkicu albo pliki `.h` i `.cpp` pochodzą z **różnych wersji projektu**. Skopiuj cały, spójny komplet plików. Nie twórz pustych funkcji tylko po to, by linker zakończył pracę.
-
-### 3. Dźwięk jest spowolniony
-
-Sprawdź log dekodera AAC oraz wartość `cfg.sample_rate` w `OpenFmPlayer.cpp`. Dla testowanego `OFM10` problem rozwiązała zmiana **44100 → 48000**. Zbyt niska częstotliwość wyjścia I2S spowalnia i obniża dźwięk.
-
-### 4. Widzisz PID metadanych, ale nie ma wykonawcy ani tytułu
-
-Parser może wykryć PAT/PMT przed pierwszym tagiem ID3. Na początku strumienia przez pewien czas pola mogą pozostać puste. Szukaj logów:
-
-```text
-[ID3] PMT: metadata PID=0x... (stream_type=0x15)
-[ID3] Sygnatura ID3 wykryta (...)
-[ID3] Nowe metadane: wykonawca=... | tytul=...
-```
-
-Polecenie `m` pokazuje liczniki diagnostyczne. Brak metadanych na konkretnym kanale nie musi oznaczać awarii audio. Nie przypisuj PID `0x102` na sztywno — może się zmieniać.
-
-### 5. Nie działa część pozycji z listy 200
-
-To możliwe: **katalog zawiera nazwy, nie gwarancję odtwarzania**. Pozycja może nie udostępniać OpenFM HLS, przekierowanie GETRADIO mogło się zmienić albo token/strumień być niedostępny. Dla pewnego testu użyj `o OFM10`, a następnie sprawdź komunikaty `[KATALOG]` i `[OPENFM]`.
-
-### 6. Wolne odświeżanie TFT
-
-Sprawdź, czy po `spi.begin(...)` nadal wywoływana jest konfiguracja `spi.beginTransaction(SPISettings(40000000, MSBFIRST, SPI_MODE0))`. Upewnij się, że kod korzysta z aktualizacji fragmentów canvasu (`pushCanvasRegion`), a nie pełnego ekranu przy każdej sekundzie.
-
-### 7. Zegar jest pusty lub pokazuje złą godzinę
-
-Sprawdź połączenie Wi-Fi, dostęp do NTP i strefę czasową `CET-1CEST,M3.5.0,M10.5.0/3`. Czcionka `DS_DIGII35pt7b.h` musi być dostępna podczas kompilacji.
-
-### 8. STOP lub zmiana stacji trwa zbyt długo
-
-Przerwanie aktywnego pobierania HTTPS bywa opóźnione przez sieć. Projekt stosuje asynchroniczne oczekiwanie na zakończenie sesji i krótkie czasy oczekiwania bufora, ale nie gwarantuje natychmiastowego STOP w każdej sytuacji.
-
-## Bezpieczeństwo i ograniczenia
-
-1. **Nieoficjalne API:** OpenFM może zmienić format tokenu, adresy CDN, wymagania dostępu i ofertę stacji.
-2. **TLS:** kod rozwojowy używa `WiFiClientSecure::setInsecure()`, czyli **nie weryfikuje certyfikatu serwera**. Do zastosowań produkcyjnych należy wdrożyć zaufane CA/weryfikację certyfikatów.
-3. **Tokeny:** nie publikuj pełnych aktywnych URL podpisanych tokenem, logów z takimi URL ani danych uwierzytelniających do Wi-Fi.
-4. **Format HLS:** wspierana ścieżka obejmuje przede wszystkim **MPEG-TS + AAC**. Nie zakładaj działania HLS z DRM, szyfrowaniem `#EXT-X-KEY`, segmentami fMP4 ani wszystkimi kodekami.
-5. **200 wpisów ≠ 200 przetestowanych stacji:** szczegóły w sekcji katalogu.
-6. **Znaki i nazwy:** nietypowe znaki Unicode / bardzo długie teksty mogą wymagać dalszej obsługi fontów i przewijania na TFT.
-7. **Licencje plików zewnętrznych:** przed publicznym udostępnieniem sprawdź prawa do niestandardowych czcionek i kodu pochodzącego z innych projektów.
-8. **Trwałość działania:** długoterminowe testy sieciowe i wszystkich kanałów nie zostały ukończone.
-9. **Warunki usług:** używaj strumieni i infrastruktury OpenFM zgodnie z obowiązującymi zasadami dostawcy.
-
-## Plan rozwoju
-
-- [x] Odtwarzanie OpenFM HLS z tokenem, playlistami MASTER/MEDIA i AAC.
-- [x] Dźwięk I2S przez PCM5102A.
-- [x] TFT ILI9488 z canvasem i SPI 40 MHz.
-- [x] Zegar NTP z dużą czcionką.
-- [x] Sterowanie pilotem NEC i przez Serial.
-- [x] Parser ID3v2 i poprawny odczyt `TIT2` / `TPE1` na `OFM10`.
-- [x] Dodanie listy 200 pozycji z nazwami katalogowymi.
-- [x] Poprawienie częstotliwości I2S 44,1 → 48 kHz dla sprawdzonego strumienia.
-- [ ] Zweryfikowanie wszystkich 200 pozycji i filtrowanie niedziałających wpisów.
-- [ ] **Automatyczne dopasowywanie częstotliwości I2S do częstotliwości AAC.**
-- [ ] Zapis katalogu i rozpoznanych `OFMxxx` w pamięci nieulotnej.
-- [ ] Przewijanie długich nazw stacji, wykonawców i utworów.
-- [ ] Opcjonalny odczyt albumu, gatunku i dodatkowych ramek ID3 — jeżeli źródła je nadają.
-- [ ] Trwałe zapamiętywanie głośności, ulubionych i ostatniej stacji.
-- [ ] Weryfikacja TLS, poprawa odporności na błędy sieci i dalsze testy stabilności.
-- [ ] Dalsza rozbudowa dokumentacji, testów i kompatybilności bibliotek.
-
-## Licencja
-
-Kod własny udostępniany w tym repozytorium jest przeznaczony do publikacji jako **wolne oprogramowanie na licencji GNU General Public License v3.0 — GPL-3.0-only**, w zakresie, w jakim jego autorzy posiadają do niego prawa.
-
-Możesz używać, studiować, zmieniać i rozpowszechniać kod na zasadach tej licencji. Przy redystrybucji obowiązują postanowienia GPL-3.0, w tym dotyczące udostępniania odpowiedniego kodu źródłowego oraz zachowywania informacji o prawach autorskich i licencjach. Pełna treść znajduje się w pliku [`LICENSE`](LICENSE), który należy umieścić obok README.
-
-**Ważne:** licencja tego repozytorium **nie zastępuje** licencji bibliotek, plików czcionek ani fragmentów kodu innych autorów. Jeśli w projekcie umieszczono cudze pliki, zachowaj odpowiednie informacje o ich pochodzeniu i licencji. Wersje/forki zależności należy weryfikować indywidualnie.
-
-Oprogramowanie jest udostępniane **bez gwarancji** w zakresie dozwolonym prawem.
+- [x] Odtwarzanie OpenFM HLS i dekodowanie AAC na ESP32-S3.
+- [x] Metadane wykonawcy i tytułu z ID3v2.
+- [x] Lokalny katalog 200 pozycji z identyfikatorami OFM.
+- [x] Lista z podświetleniem, wybór numeryczny i dwustopniowe OK.
+- [x] Polskie litery w nazwach stacji i metadanych.
+- [x] Nazwana paleta kolorów RGB565.
+- [x] Automatyczne dostosowanie formatu I2S na podstawie AAC.
+- [x] Częściowe odświeżanie przewijanej listy TFT.
+- [ ] Dokończenie weryfikacji brakujących identyfikatorów i testów wszystkich pozycji.
+- [ ] Dłuższe testy stabilności i responsywności ekranu.
+- [ ] Pełna weryfikacja TLS oraz odporności na zmiany API.
+- [ ] Opcjonalne zapisywanie ulubionych / ostatnio słuchanej stacji.
+- [ ] Opcjonalne dodatkowe informacje z ID3, jeśli nadawcy je transmitują.
 
 ## Podziękowania i źródła
 
-Projekt powstał dzięki społeczności open source, dokumentacji bibliotek oraz wspólnym eksperymentom i testom sprzętowym. Szczególne podziękowania należą się:
+Projekt powstał w oparciu o dokumentację otwartych bibliotek, wskazówki społeczności i wielokrotne testy na fizycznym urządzeniu.
 
-| Projekt / osoba | Za co dziękujemy | Repozytorium / źródło |
-|---|---|---|
-| **Phil Schatzmann** i współtwórcy | Arduino Audio Tools, interfejsy odtwarzania, I2S | [arduino-audio-tools](https://github.com/pschatzmann/arduino-audio-tools) |
-| **Phil Schatzmann** i współtwórcy | Dekoder Helix dla Arduino | [arduino-libhelix](https://github.com/pschatzmann/arduino-libhelix) |
-| **UNIT Electronics / DevLab** i współtwórcy | Wariant Arduino Audio Tools wykorzystany podczas prac | [DevLab fork](https://github.com/UNIT-Electronics-MX/unit_devlab_fork_arduino_audio_tools) |
-| **Benoît Blanchon** | ArduinoJson | [ArduinoJson](https://github.com/bblanchon/ArduinoJson) |
-| **tzapu / tablatronix** i współtwórcy | WiFiManager | [WiFiManager](https://github.com/tzapu/WiFiManager) |
-| **Limor „Ladyada” Fried**, Adafruit i społeczność | Adafruit GFX / canvas | [Adafruit-GFX-Library](https://github.com/adafruit/Adafruit-GFX-Library) |
-| **Espressif Systems** i społeczność | ESP32 Arduino Core, Wi-Fi, FreeRTOS, sterowniki | [arduino-esp32](https://github.com/espressif/arduino-esp32) |
-| **GETRADIO** | Informacje katalogowe łączące nazwy kanałów i adresy | [getradio.reconv.pl/openfm](https://getradio.reconv.pl/openfm) |
-| **GorlikItsMe** | Publicznie opisany sposób uzyskiwania tokenu OpenFM — punkt odniesienia | [Gist OpenFM](https://gist.github.com/GorlikItsMe/4c90cba803c3ec097dbcb5ce44e65bef) |
+| Projekt / autor | Wkład |
+|---|---|
+| [Phil Schatzmann — Arduino Audio Tools](https://github.com/pschatzmann/arduino-audio-tools) | Strumienie audio, I2S, bufory, dekodery |
+| [Phil Schatzmann — arduino-libhelix](https://github.com/pschatzmann/arduino-libhelix) | Dekoder AAC Helix |
+| [UNIT Electronics / DevLab](https://github.com/UNIT-Electronics-MX/unit_devlab_fork_arduino_audio_tools) | Używany wariant biblioteki Audio Tools |
+| [Benoît Blanchon — ArduinoJson](https://github.com/bblanchon/ArduinoJson) | Parsowanie JSON |
+| [tzapu — WiFiManager](https://github.com/tzapu/WiFiManager) | Konfiguracja Wi-Fi |
+| [Adafruit — GFX](https://github.com/adafruit/Adafruit-GFX-Library) | Canvas i grafika na TFT |
+| [Espressif — Arduino-ESP32](https://github.com/espressif/arduino-esp32) | Platforma ESP32-S3 i peryferia |
+| [GETRADIO](https://getradio.reconv.pl/openfm) | Publiczny katalog nazw i slugów stacji |
+| [GorlikItsMe — opis API tokenu](https://gist.github.com/GorlikItsMe/4c90cba803c3ec097dbcb5ce44e65bef) | Publiczny przykład uzyskania czasowego URL OpenFM |
+| [Społeczność Elektroda — HLS/ID3v2](https://www.elektroda.pl/rtvforum/viewtopic.php?p=22000329#22000329) | Wskazówki dotyczące odczytu ID3 z PID MPEG-TS |
 
-**Osobne podziękowania dla autora rozwiązania opisanego na forum Elektroda**, który zwrócił uwagę na obecność **ID3v2 w osobnym PID kontenera MPEG-TS** i opisał drogę PAT/PMT → PES → ID3 → tytuł. To naprowadziło rozwój tego projektu na bezpośrednie odczytywanie metadanych w ESP32-S3 — bez dodatkowego konwertera HLS/ICY i bez przerabiania strumienia UART.
+Dodatkowe materiały: [artykuł o HLS w Arduino Audio Tools](https://www.pschatzmann.ch/home/2025/04/09/http-live-streaming-hls-with-the-arduino-audio-tools/).
 
-- [Wpis i opis rozwiązania HLS/ID3v2 na Elektrodzie](https://www.elektroda.pl/rtvforum/viewtopic.php?p=22000329#22000329)
-- [Artykuł Phila Schatzmanna o HLS w Arduino Audio Tools](https://www.pschatzmann.ch/home/2025/04/09/http-live-streaming-hls-with-the-arduino-audio-tools/)
+Opracowanie i rozwój kodu odbywały się iteracyjnie, z pomocą **ChatGPT** oraz weryfikacją działania na prawdziwym ESP32-S3.
 
-Dziękujemy również autorom standardów **HLS, MPEG-TS, AAC, ID3**, wszystkim współtwórcom wymienionych bibliotek, społeczności ESP32/Arduino i osobom pomagającym w testach. Kod odtwarzacza był rozwijany iteracyjnie z pomocą **ChatGPT**, przy weryfikacji rozwiązań na rzeczywistym sprzęcie.
+### Znaki towarowe
 
-### Znaki towarowe i brak powiązań z OpenFM
-
-**OpenFM** i nazwy stacji należą do odpowiednich właścicieli. Projekt **nie jest afiliowany, sponsorowany ani zatwierdzony przez OpenFM**. Nazwy stacji i adresy serwisów zewnętrznych służą wyłącznie identyfikacji interoperacyjnych źródeł internetowych.
+**OpenFM** i nazwy poszczególnych stacji należą do ich prawnych właścicieli. Repozytorium **nie jest oficjalnym projektem OpenFM**, nie jest przez operatora sponsorowane ani zatwierdzone.
 
 ---
 
-Jeżeli projekt jest przydatny, możesz oznaczyć repozytorium ⭐, zgłosić problem w **Issues** lub zaproponować poprawkę przez **Pull Request**. Mile widziane są szczególnie testy nowych stacji, logi metadanych ID3 i poprawki automatycznej konfiguracji sample rate.
+Jeżeli projekt okazał się pomocny, możesz oznaczyć repozytorium ⭐, zgłosić problem w **Issues** lub zaproponować poprawkę przez **Pull Request**. Szczególnie przydatne są wyniki testów stacji, błędy dekodowania ID3 i pomiary płynności działania TFT.
