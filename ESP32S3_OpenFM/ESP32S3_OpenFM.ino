@@ -388,10 +388,13 @@ static void closeStationList() {
 static void scrollStationList(int direction) {
   if (!stationListActive) openStationList();
   stationListSelection = (stationListSelection + direction + COUNT) % COUNT;
+  // Po dojściu do krawędzi przenosimy okno o pół strony, nie o 1 wiersz.
+  // Dzięki temu pełny transfer ośmiu wierszy nie występuje przy każdym
+  // kolejnym naciśnięciu przycisku na brzegu widocznej listy.
   if (stationListSelection < stationListFirst)
-    stationListFirst = stationListSelection;
+    stationListFirst = stationListSelection - (STATION_LIST_ROWS / 2 - 1);
   else if (stationListSelection >= stationListFirst + STATION_LIST_ROWS)
-    stationListFirst = stationListSelection - STATION_LIST_ROWS + 1;
+    stationListFirst = stationListSelection - STATION_LIST_ROWS / 2;
   stationListFirst = constrain(stationListFirst, 0, COUNT - STATION_LIST_ROWS);
   stationListLastAction = millis();
   stationListDirty = true;
@@ -537,7 +540,10 @@ static void drawStationList() {
     canvas.print("GORA/DOL: wybor   OK: graj   STOP: zamknij");
     pushCanvasRegion(0, 0, WIDTH, HEIGHT); // Tylko przy pierwszym otwarciu.
   } else {
-    pushCanvasRegion(0, 0, WIDTH, 38); // Aktualny numer w naglowku.
+    // W nagłówku zmieniają się wyłącznie cyfry zaznaczonej pozycji.
+    // Prefiks "STACJE OPEN FM" i linia pod nim pozostają niezmienne.
+    // Przy czcionce GFX 2x cyfry zaczynają się w okolicy X=202.
+    pushCanvasRegion(194, 0, 125, 34); // Zamiast całego nagłówka 480x38.
     if (windowMoved) {
       pushCanvasRegion(0, 39, WIDTH, STATION_LIST_ROWS * 31);
     } else {
