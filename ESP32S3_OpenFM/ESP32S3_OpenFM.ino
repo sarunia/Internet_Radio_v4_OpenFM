@@ -475,7 +475,9 @@ static void drawStationListRow(int row) {
   canvas.setCursor(10, y + 3);
   canvas.printf("%03d ", index + 1);
   const String name = String(OpenFmCatalog::entry(index).name);
-  OpenFmPolishText::print(canvas, name, 438, selected ? Kolory::CZERWONY : Kolory::ZIELONY, 2);
+  const uint16_t nameColor = selected ? Kolory::BIALY : Kolory::ZIELONY; // Jednolity kolor ASCII i polskich glifów.
+  canvas.setTextColor(nameColor); // Adafruit GFX używa tej barwy dla zwykłych liter.
+  OpenFmPolishText::print(canvas, name, 438, nameColor, 2); // Własne polskie glify używają tej samej barwy.
   if (OpenFmCatalog::knownId(index).isEmpty()) {
     canvas.setTextColor(Kolory::POMARANCZOWY_JASNY);
     canvas.setCursor(449, y + 3);
