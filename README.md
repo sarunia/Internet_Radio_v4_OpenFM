@@ -7,7 +7,7 @@
 ![Status](https://img.shields.io/badge/status-wersja%20testowa-yellow)
 ![Licencja](https://img.shields.io/badge/licencja-GPL--3.0--only-blue)
 
-**Samodzielne radio internetowe OpenFM**, zbudowane na **ESP32-S3 N16R8** (16 MB Flash, 8 MB PSRAM), z wyświetlaczem **ILI9488 IPS 480 × 320**, przetwornikiem **PCM5102A I2S** i pilotem podczerwieni **NEC**. Radio samodzielnie pobiera aktualny adres HLS z API OpenFM, odtwarza dźwięk AAC, wyświetla nazwę stacji, wykonawcę i tytuł utworu oraz parametry strumienia.
+**Radio internetowe z obsługą kanałów OpenFM**, zbudowane na **ESP32-S3 N16R8** (16 MB Flash, 8 MB PSRAM), z wyświetlaczem **ILI9488 IPS 480 × 320**, przetwornikiem **PCM5102A I2S** i pilotem podczerwieni **NEC**. Radio samodzielnie pobiera aktualny adres HLS z API OpenFM, odtwarza dźwięk AAC, wyświetla nazwę stacji, wykonawcę i tytuł utworu oraz parametry strumienia.
 
 Projekt jest hobbystyczną, **nieoficjalną** implementacją klienta OpenFM — nie jest powiązany organizacyjnie z operatorem usługi.
 
