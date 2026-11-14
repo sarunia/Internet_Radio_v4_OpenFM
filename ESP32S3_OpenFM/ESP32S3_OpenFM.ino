@@ -96,6 +96,38 @@
 #include "OpenFmCatalog.h"
 
 // ============================================================================
+// KODY PRZYCISKOW PILOTA IR NEC
+// ============================================================================
+#define rcCmdVolumeUp     0x0028   // VOL+
+#define rcCmdVolumeDown   0x0024   // VOL-
+#define rcCmdArrowRight   0x0026   // W prawo - nastepna stacja
+#define rcCmdArrowLeft    0x0027   // W lewo - poprzednia stacja
+#define rcCmdArrowUp      0x0030   // W gore - lista stacji, pozycja wyzej
+#define rcCmdArrowDown    0x0022   // W dol - lista stacji, pozycja nizej
+#define rcCmdOk           0x0025   // OK - zatwierdzenie
+#define rcCmdMode         0x0020   // SOURCE
+#define rcCmdMute         0x0029   // MUTE
+#define rcCmdKey0         0x0012   // 0
+#define rcCmdKey1         0x0015   // 1
+#define rcCmdKey2         0x0014   // 2
+#define rcCmdKey3         0x0008   // 3
+#define rcCmdKey4         0x0011   // 4
+#define rcCmdKey5         0x0010   // 5
+#define rcCmdKey6         0x0009   // 6
+#define rcCmdKey7         0x0007   // 7
+#define rcCmdKey8         0x0006   // 8
+#define rcCmdKey9         0x0005   // 9
+#define rcCmdBankUp       0x0018   // FF+
+#define rcCmdBankDown     0x0019   // FF-
+#define rcCmdPauseResume  0x0032   // PLAY/PAUSE
+#define rcCmdFolderList   0x0036   // GOTO
+#define rcCmdStop         0x0033   // STOP
+#define rcCmdProg         0x0023   // PROG
+#define rcCmdMemory       0x0016   // MEMORY
+#define rcCmdRandom       0x001A   // RANDOM
+#define rcCmdSearch       0x0013   // SEARCH
+
+// ============================================================================
 // PALETA KOLORÓW RGB565 — ILI9488 / Adafruit GFX
 // ============================================================================
 // Zmieniaj wartości po prawej stronie, aby zmienić wygląd całego radia.
@@ -666,41 +698,41 @@ static void handleRemote(){
  // Kody przycisków numerycznych pilota.
  int digit = -1;
  switch (key) {
-   case 0x12: digit=0; break;
-   case 0x15: digit=1; break;
-   case 0x14: digit=2; break;
-   case 0x08: digit=3; break;
-   case 0x11: digit=4; break;
-   case 0x10: digit=5; break;
-   case 0x09: digit=6; break;
-   case 0x07: digit=7; break;
-   case 0x06: digit=8; break;
-   case 0x05: digit=9; break;
+   case rcCmdKey0: digit=0; break;
+   case rcCmdKey1: digit=1; break;
+   case rcCmdKey2: digit=2; break;
+   case rcCmdKey3: digit=3; break;
+   case rcCmdKey4: digit=4; break;
+   case rcCmdKey5: digit=5; break;
+   case rcCmdKey6: digit=6; break;
+   case rcCmdKey7: digit=7; break;
+   case rcCmdKey8: digit=8; break;
+   case rcCmdKey9: digit=9; break;
    default: break;
  }
  if (digit >= 0) { handleDigitInput(digit); return; }
  switch(key){
-  case 0x26: selectStation(station+1); break; // PRAWO: od razu następna stacja.
-  case 0x27: selectStation(station-1); break; // LEWO: od razu poprzednia stacja.
-  case 0x22: scrollStationList(+1); break;  // DOL: następna pozycja na liscie.
-  case 0x30: scrollStationList(-1); break;  // GORA: poprzednia pozycja na liscie.
-  case 0x28: volume=min(21,volume+1);muted=false;OpenFmPlayer::setVolume(volume);break;
-  case 0x24: volume=max(0,volume-1);muted=false;OpenFmPlayer::setVolume(volume);break;
-  case 0x33: // STOP anuluje cyfry/liste; poza nimi zatrzymuje audio.
+  case rcCmdArrowRight: selectStation(station+1); break; // PRAWO: od razu następna stacja.
+  case rcCmdArrowLeft: selectStation(station-1); break; // LEWO: od razu poprzednia stacja.
+  case rcCmdArrowDown: scrollStationList(+1); break;  // DOL: następna pozycja na liscie.
+  case rcCmdArrowUp: scrollStationList(-1); break;  // GORA: poprzednia pozycja na liscie.
+  case rcCmdVolumeUp: volume=min(21,volume+1);muted=false;OpenFmPlayer::setVolume(volume);break;
+  case rcCmdVolumeDown: volume=max(0,volume-1);muted=false;OpenFmPlayer::setVolume(volume);break;
+  case rcCmdStop: // STOP anuluje cyfry/liste; poza nimi zatrzymuje audio.
     if (!stationNumberInput.isEmpty()) {
       stationNumberInput = ""; stationNumberDirty = false;
       screenDirty = true; lastHeadlineSignature = "";
     } else if(stationListActive) closeStationList();
     else {pendingPlay=false;pendingStop=OpenFmPlayer::busy();OpenFmPlayer::stop();}
     break;
-  case 0x25: // OK: numer -> lista -> odtwarzanie; poza nimi restart.
+  case rcCmdOk: // OK: numer -> lista -> odtwarzanie; poza nimi restart.
     if (!stationNumberInput.isEmpty()) confirmEnteredNumber();
     else if(stationListActive) confirmStationList();
     else requestSwitch();
     break;
-  case 0x29: muted=!muted;OpenFmPlayer::setVolume(muted?0:volume);break;
-  case 0x18: selectStation(station+1);break; // FF+ jak dotychczas.
-  case 0x19: selectStation(station-1);break; // FF- jak dotychczas.
+  case rcCmdMute: muted=!muted;OpenFmPlayer::setVolume(muted?0:volume);break;
+  case rcCmdBankUp: selectStation(station+1);break; // FF+ jak dotychczas.
+  case rcCmdBankDown: selectStation(station-1);break; // FF- jak dotychczas.
   default:break;
  }
 }
